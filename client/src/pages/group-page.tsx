@@ -20,15 +20,25 @@ import {
 export default function GroupPage() {
   const [_, setLocation] = useLocation();
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
-  const [matchGroup] = useRoute<{ groupId: string }>("/group/:groupId");
-  const [matchFolder] = useRoute<{ groupId: string, folderId: string }>("/group/:groupId/folder/:folderId");
   
-  // Extract and sanitize groupId
-  const rawGroupId = matchGroup && typeof matchGroup !== 'boolean' ? matchGroup.params.groupId : 
-                     (matchFolder && typeof matchFolder !== 'boolean' ? matchFolder.params.groupId : "");
-  const groupId = rawGroupId ? parseInt(rawGroupId) : 0;
-  const folderId = matchFolder && typeof matchFolder !== 'boolean' && matchFolder.params.folderId ? 
-                   parseInt(matchFolder.params.folderId) : null;
+  // Handle group route
+  const [matchesGroupRoute, groupParams] = useRoute<{ groupId: string }>("/group/:groupId");
+  
+  // Handle folder within group route
+  const [matchesFolderRoute, folderParams] = useRoute<{ groupId: string, folderId: string }>("/group/:groupId/folder/:folderId");
+  
+  // Determine groupId and folderId based on matched routes
+  let groupId = 0;
+  let folderId: number | null = null;
+  
+  if (matchesGroupRoute && groupParams) {
+    groupId = parseInt(groupParams.groupId) || 0;
+  }
+  
+  if (matchesFolderRoute && folderParams) {
+    groupId = parseInt(folderParams.groupId) || 0;
+    folderId = parseInt(folderParams.folderId) || null;
+  }
   
   // Only call useGroup if groupId is valid
   const { groupDetails, isLoading: isGroupLoading, updateGroup } = useGroup(groupId || 0);
@@ -62,10 +72,15 @@ export default function GroupPage() {
     );
   }
 
-  if (!groupDetails) {
+  // Only redirect to home page if we're not loading and the group doesn't exist
+  if (!isGroupLoading && !groupDetails) {
     setLocation("/");
     return null;
   }
+
+  // We've verified groupDetails exists at this point
+  const userPermission = groupDetails?.userPermission || "View";
+  const canEdit = userPermission === "Edit" || isAdmin;
 
   return (
     <AppLayout
@@ -83,11 +98,9 @@ export default function GroupPage() {
                   {user.role}
                 </span>
               )}
-              {groupDetails.userPermission && (
-                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-                  {groupDetails.userPermission} Access
-                </span>
-              )}
+              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                {userPermission} Access
+              </span>
             </div>
           </div>
           
@@ -109,7 +122,7 @@ export default function GroupPage() {
             <Button 
               variant="outline"
               onClick={handleUploadFile}
-              disabled={groupDetails.userPermission !== "Edit"}
+              disabled={!canEdit}
             >
               <Upload className="mr-2 h-4 w-4" />
               <span>Upload</span>
@@ -127,7 +140,7 @@ export default function GroupPage() {
                     Manage Group
                   </DropdownMenuItem>
                 )}
-                {(isAdmin || groupDetails.userPermission === "Edit") && (
+                {canEdit && (
                   <>
                     {isAdmin && <DropdownMenuSeparator />}
                     <DropdownMenuItem onClick={() => openModal('fileUpload', { groupId, parentId: folderId })}>
