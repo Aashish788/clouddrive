@@ -11,7 +11,10 @@ import {
   ChevronDown,
   Loader2,
   FileX,
-  AlertCircle
+  AlertCircle,
+  MoreVertical,
+  Folder as FolderIcon,
+  File as FileIcon
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -248,5 +251,3 @@ export function FileExplorer({ groupId, parentId }: FileExplorerProps) {
     </div>
   );
 }
-
-import { FolderIcon, FileIcon, MoreVertical } from "lucide-react";
