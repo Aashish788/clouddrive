@@ -102,7 +102,7 @@ export default function HomePage() {
           <CreateFolderDialog
             open={isCreateFolderOpen}
             onOpenChange={setIsCreateFolderOpen}
-            groupId={0} // Dummy group ID for personal files (will be ignored)
+            groupId={null} // Use null for personal files
             parentId={personalFolderId}
           />
         </div>

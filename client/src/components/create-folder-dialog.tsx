@@ -8,7 +8,7 @@ import { useFiles } from "@/hooks/use-files";
 interface CreateFolderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  groupId: number;
+  groupId: number | null;
   parentId: number | null;
 }
 

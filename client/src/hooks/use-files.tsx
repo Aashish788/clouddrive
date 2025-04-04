@@ -60,8 +60,16 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const createFolderMutation = useMutation({
-    mutationFn: async (data: { name: string, parentId: number | null, groupId: number }) => {
-      const res = await apiRequest("POST", "/api/folders", data);
+    mutationFn: async (data: { name: string, parentId: number | null, groupId: number | null }) => {
+      // If groupId is null or 0, we're creating a personal folder
+      const url = (!data.groupId || data.groupId === 0) ? "/api/personal-folders" : "/api/folders";
+      
+      // Remove groupId for personal folders endpoint or ensure it's included for group folders
+      const payload = (!data.groupId || data.groupId === 0) 
+        ? { name: data.name, parentId: data.parentId }
+        : data;
+        
+      const res = await apiRequest("POST", url, payload);
       return res.json();
     },
     onSuccess: () => {
@@ -81,8 +89,16 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const uploadFileMutation = useMutation({
-    mutationFn: async (data: { name: string, type: string, data: string, groupId: number, parentId: number | null }) => {
-      const res = await apiRequest("POST", "/api/files", data);
+    mutationFn: async (data: { name: string, type: string, data: string, groupId: number | null, parentId: number | null }) => {
+      // If groupId is null or 0, we're uploading to personal space
+      const url = (!data.groupId || data.groupId === 0) ? "/api/personal-files" : "/api/files";
+      
+      // Remove groupId for personal files endpoint or ensure it's included for group files
+      const payload = (!data.groupId || data.groupId === 0) 
+        ? { name: data.name, type: data.type, data: data.data, parentId: data.parentId }
+        : data;
+        
+      const res = await apiRequest("POST", url, payload);
       return res.json();
     },
     onSuccess: () => {

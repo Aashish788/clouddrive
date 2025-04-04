@@ -52,7 +52,7 @@ export function FileUploadModal() {
           name: selectedFile.name,
           type: selectedFile.type,
           data: base64Content,
-          groupId: groupId || 0, // Use 0 to indicate personal files
+          groupId: groupId, // Will be null for personal files
           parentId: parentId || null
         });
         
