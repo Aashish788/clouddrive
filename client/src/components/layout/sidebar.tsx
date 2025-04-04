@@ -28,7 +28,7 @@ interface SidebarProps {
 export function Sidebar({ className, isMobile, onClose }: SidebarProps) {
   const { user, logoutMutation } = useAuth();
   const [location] = useLocation();
-  const { groups, isLoading } = useGroups();
+  const { groups, isLoading, isAdmin } = useGroups();
   
   const handleLogout = () => {
     logoutMutation.mutate();
@@ -136,7 +136,10 @@ export function Sidebar({ className, isMobile, onClose }: SidebarProps) {
               >
                 <Users className="mr-3 h-5 w-5" />
                 <span className="flex-grow truncate text-left">{membership.group.name}</span>
-                <Badge variant={membership.permission === "Edit" ? "success" : "secondary"} className="ml-2">
+                <Badge 
+                  variant={membership.permission === "Edit" ? "default" : "secondary"} 
+                  className="ml-2"
+                >
                   {membership.permission}
                 </Badge>
               </Button>

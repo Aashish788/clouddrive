@@ -38,6 +38,8 @@ export type GroupDetails = {
 
 export function useGroups() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
@@ -65,10 +67,11 @@ export function useGroups() {
   });
 
   return {
-    groups: groupsQuery.data,
+    groups: groupsQuery.data || [], // Return empty array if data is undefined
     isLoading: groupsQuery.isLoading,
     error: groupsQuery.error,
     createGroup: createGroupMutation.mutate,
+    isAdmin
   };
 }
 
@@ -222,7 +225,7 @@ export function useAdminGroups() {
   });
 
   return {
-    groups: groupsQuery.data,
+    groups: groupsQuery.data || [], // Return empty array if data is undefined
     isLoading: groupsQuery.isLoading,
     error: groupsQuery.error,
   };
