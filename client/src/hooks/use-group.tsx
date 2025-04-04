@@ -1,8 +1,9 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 // Define the Group type
 export type Group = {
@@ -74,17 +75,22 @@ export function useGroups() {
 export function useGroup(groupId: number) {
   const { toast } = useToast();
   const [_, setLocation] = useLocation();
+  const { user } = useAuth();
 
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
+
+  // Admins can access any group, and the server will handle permissions appropriately
   const groupQuery = useQuery<GroupDetails>({
     queryKey: [`/api/groups/${groupId}`],
     enabled: Boolean(groupId),
     retry: false, // Don't retry failed requests
-    queryFn: getQueryFn({ on401: "throw", on403: "throw" }) // Force 403 errors to throw
+    // Stop query error handling from running for admin roles - let server handle it
+    meta: { suppressErrorToast: isAdmin }
   });
   
-  // Handle errors with useEffect to avoid re-renders
+  // Handle errors with useEffect to avoid re-renders - don't redirect admins
   useEffect(() => {
-    if (groupQuery.error) {
+    if (groupQuery.error && !isAdmin) {
       toast({
         title: "Access Denied",
         description: "You don't have access to this group",
@@ -92,7 +98,7 @@ export function useGroup(groupId: number) {
       });
       setLocation("/");
     }
-  }, [groupQuery.error, toast, setLocation]);
+  }, [groupQuery.error, toast, setLocation, isAdmin]);
 
   const addUserMutation = useMutation({
     mutationFn: async ({ userId, permission }: { userId: number, permission: "View" | "Edit" }) => {

@@ -23,22 +23,17 @@ export async function apiRequest(
   return res;
 }
 
-type ErrorBehavior = "returnNull" | "throw";
+type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
-  on401?: ErrorBehavior;
-  on403?: ErrorBehavior;
+  on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior = "throw", on403: forbiddenBehavior = "throw" }) =>
+  ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const res = await fetch(queryKey[0] as string, {
       credentials: "include",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
-    }
-    
-    if (forbiddenBehavior === "returnNull" && res.status === 403) {
       return null;
     }
 
@@ -49,7 +44,7 @@ export const getQueryFn: <T>(options: {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
+      queryFn: getQueryFn({ on401: "throw" }), // Default behavior for 401s
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
