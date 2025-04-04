@@ -209,6 +209,18 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getUserPermissionForGroup(userId: number, groupId: number): Promise<Permission | undefined> {
+    // First, check if the user is an Admin or SuperAdmin
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+    
+    // Admins and SuperAdmins have Edit permissions for all groups
+    if (user && (user.role === "Admin" || user.role === "SuperAdmin")) {
+      return "Edit";
+    }
+    
+    // Otherwise, check for specific group membership
     const [membership] = await db
       .select()
       .from(groupMemberships)

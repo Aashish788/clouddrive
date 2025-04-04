@@ -75,7 +75,21 @@ export default function GroupPage() {
     >
       <div className="p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 space-y-3 sm:space-y-0">
-          <h1 className="text-2xl font-semibold text-gray-900">{headerTitle}</h1>
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">{headerTitle}</h1>
+            <div className="flex gap-2 mt-1">
+              {user?.role && (
+                <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                  {user.role}
+                </span>
+              )}
+              {groupDetails.userPermission && (
+                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                  {groupDetails.userPermission} Access
+                </span>
+              )}
+            </div>
+          </div>
           
           <div className="flex items-center space-x-3">
             <DropdownMenu>
