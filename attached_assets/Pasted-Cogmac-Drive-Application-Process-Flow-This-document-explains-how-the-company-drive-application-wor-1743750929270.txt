@@ -1,0 +1,137 @@
+Cogmac Drive Application - Process Flow
+This document explains how the company drive application works from beginning to end. It shows how what you see on the screen connects to the behind-the-scenes logic involving users, groups, and permissions.
+Phase 1: Getting Started (Logging In or Signing Up)
+Signing Up (New Users):
+What You See (Frontend): You go to the Signup page and type in your Name, Email, and choose a Password.
+What Happens Behind the Scenes (Backend):
+The system gets your information.
+It checks if the email format is okay and if someone else already signed up with that email using the Users database table. If it's already used, it sends back an error message.
+It scrambles your password using a secure method (hashing) so it's not stored plainly.
+It creates a new entry for you in the Users table, saving your Name, Email, scrambled Password, and setting your access level (Role) to 'User'.
+What You See Next (Frontend): You see a "Success!" message and are usually asked to log in.
+Logging In (Existing Users):
+What You See (Frontend): You go to the Login page and enter your Email and Password.
+What Happens Behind the Scenes (Backend):
+The system looks up your email in the Users table.
+If it finds your email, it scrambles the password you just typed in and compares it to the scrambled password saved in the database (PasswordHash).
+If they match, great! The system knows it's you. It notes your unique ID (UserID), Name, and your access level (Role - like 'User', 'Admin', or 'SuperAdmin').
+It creates a special temporary pass (an authentication token, like a digital keycard) that includes your ID and role. This proves who you are for future actions.
+It sends your basic info (like Name and Role) and this token back to your browser.
+If the email isn't found or the password doesn't match, it sends back an error message.
+What You See Next (Frontend):
+Your browser safely stores the token (digital keycard).
+The application remembers you're logged in, knowing your name and role.
+You're automatically taken to the main screen of the drive.
+Phase 2: Using the Drive (Viewing and Managing Files)
+Seeing Your Files and Folders (Main View):
+What You See (Frontend): When the main drive screen loads after you log in, it needs to show you your stuff. It asks the backend for the files and folders you're allowed to see, sending your token (digital keycard) along to prove it's you.
+What Happens Behind the Scenes (Backend):
+The system checks your token to make sure it's valid and sees who you are (UserID).
+It looks into the GroupMemberships table to find all the groups (GroupIDs) you belong to.
+It then looks up the actual files and folders (which are likely stored in other database tables, maybe called Files or Folders). These items are linked to specific groups (GroupIDs) and might be organized within folders (ParentID).
+It filters this big list of files/folders, keeping only the ones belonging to the groups you're a member of. It might just get the top-level items first.
+Crucially, it also checks the GroupMemberships table again to find out what you can do in each of those groups – just look (View Only) or change things (View & Edit). This is your Permission.
+It sends this personalized list of files/folders, along with your specific permission for each item's group, back to your browser.
+What You See Next (Frontend):
+The files and folders you have access to appear on the screen (maybe as icons or in a list).
+Based on the permissions received ('View Only' or 'View & Edit'), buttons like "Edit", "Delete", or "Upload" might be grayed out (disabled) or fully usable for different items or within different group areas.
+Opening a Folder:
+What You See (Frontend): You click on a folder icon. The application needs to show you what's inside. It asks the backend for the contents, sending your token and the ID of the folder you clicked.
+What Happens Behind the Scenes (Backend):
+The system checks your token to verify you.
+It figures out which group (GroupID) the folder belongs to.
+It double-checks the GroupMemberships table to make sure you're actually allowed in that group. If not, it sends an error ("Access Denied!").
+If you are allowed, it finds all files and folders that have the clicked folder listed as their parent (ParentID).
+It sends this list of items inside the folder back to your browser.
+What You See Next (Frontend): The screen updates to show the contents of the folder you clicked.
+Doing Things (Editing, Deleting, Uploading):
+What You See (Frontend): You click a button like "Delete" on a file. (Remember, this button might have been disabled if you only have 'View Only' permission for that file's group). If the button works, the application tells the backend what you want to do (e.g., "delete file X"), sending the item's ID and your token. If you're uploading, it sends the file itself and where you want to put it.
+What Happens Behind the Scenes (Backend):
+The system checks your token.
+It identifies the specific file/folder you're acting on and which group (GroupID) it belongs to.
+It looks up your exact permission (View Only or View & Edit) for that specific group in the GroupMemberships table.
+Permission Check: It sees if your permission allows the action. For example, deleting usually requires 'View & Edit'. Uploading also requires 'View & Edit' for the target location.
+If you have the right permission: The system performs the action (e.g., removes the file record from the database, saves the new file, etc.). It then sends a "Success!" message back.
+If you don't have the right permission: It sends back an error message ("Permission Denied!").
+What You See Next (Frontend):
+If successful, the screen updates (e.g., the deleted file disappears, the new file appears, you see a "File Uploaded" message).
+If there was an error, you see a message explaining the problem (like "Permission Denied").
+Phase 3: Special Powers (Admin & SuperAdmin Tasks)
+Getting to the Admin Area:
+What You See (Frontend): If you logged in and your Role is 'Admin' or 'SuperAdmin', you'll see extra menu options or buttons like "User Management" or "Group Management" that regular users don't see. Clicking these takes you to special admin screens.
+What Happens Behind the Scenes (Backend): Just showing the link doesn't need the backend, but any actions you take within the admin screens will require the backend to check your 'Admin' or 'SuperAdmin' role.
+Managing Users:
+What You See (Frontend): You go to the "User Management" screen. It asks the backend for a list of all users.
+What Happens Behind the Scenes (Backend): The system checks your token and confirms you are an 'Admin' or 'SuperAdmin'. If yes, it gets the list of users from the Users table (but leaves out private info like passwords) and sends it back.
+What You See Next (Frontend): You see a list of all users. You can view their details. If you are a SuperAdmin, you might see an option to change someone's role (like making a 'User' into an 'Admin'). If you change a role, the frontend tells the backend.
+What Happens Behind the Scenes (Backend): If a role change request comes in, the system checks the token again and specifically checks if the requester is a SuperAdmin (because only they can create other Admins). If yes, it updates the role for the chosen user in the Users table and confirms success.
+What You See Next (Frontend): The user list updates to show the new role, or you see an error if something went wrong.
+Managing Groups and Who's In Them:
+What You See (Frontend): You go to "Group Management". It asks the backend for the list of groups.
+What Happens Behind the Scenes (Backend): The system checks your token and 'Admin'/'SuperAdmin' role. If okay, it gets the list from the Groups table and sends it back.
+What You See Next (Frontend): You see the list of groups. You can create a new group (you type in a name, and the frontend sends this to the backend). You can also select a group to see or change who is in it.
+What Happens Behind the Scenes (Backend): If you create a group, the system checks your role and adds the new group to the Groups table.
+What You See (Frontend): If you choose to manage members of a specific group, the frontend asks the backend for two lists: (1) who is currently in the group, and (2) who isn't in the group yet (so you can add them).
+What Happens Behind the Scenes (Backend): The system checks your role. It looks up current members in GroupMemberships (getting their names from Users). It also finds users in the Users table who are not listed in GroupMemberships for this group. It sends both lists back.
+What You See Next (Frontend): You see the list of current members and their permissions ('View Only' or 'View & Edit'). You also see a list or search box to find other users. You can pick a user, choose a permission for them, and click "Add". The frontend tells the backend. You can also click "Remove" next to an existing member.
+What Happens Behind the Scenes (Backend): The system checks your role again. If adding, it creates a new entry in the GroupMemberships table linking the user, group, and permission. If removing, it deletes the corresponding entry from GroupMemberships. It confirms success or failure.
+What You See Next (Frontend): The list of members updates immediately to show the changes.
+Phase 4: Finishing Up
+Logging Out:
+What You See (Frontend): You click the "Logout" button.
+What Happens Next (Frontend): The application forgets you by deleting the stored token (digital keycard) and resetting your logged-in status. It sends you back to the Login page.
+What Happens Behind the Scenes (Backend): Sometimes, the backend might also be notified so it can officially mark the token as invalid, but this isn't always necessary.
+Supporting Diagram (Backend Data Flow - Conceptual)
+graph TD
+    subgraph "User Actions"
+        U_SignUp[User Signs Up] --> BE_CreateUser{Backend: Validate & Create User Record};
+        U_Login[User Logs In] --> BE_AuthUser{Backend: Authenticate User};
+        U_AccessData[User Accesses Group Data] --> BE_CheckMembership{Backend: Check GroupMemberships};
+        U_EditData[User Tries to Edit Group Data] --> BE_CheckPermission{Backend: Check Group Permission};
+    end
+
+    subgraph "Admin/SuperAdmin Actions"
+        SA_Login[Admin/SA Logs In] --> BE_AuthUser;
+        SA_CreateGroup[Admin/SA Creates Group] --> BE_CreateGroupRec{Backend: Create Group Record};
+        SA_AddUser[Admin/SA Adds User to Group] --> BE_SuggestUsers{Backend: Suggest Users from Users Table};
+        BE_SuggestUsers --> SA_SelectUserPerm[Admin/SA Selects User & Permission];
+        SA_SelectUserPerm --> BE_CreateMembership{Backend: Create GroupMembership Record};
+        SA_ViewUsers[Admin/SA Views All Users] --> DB_Users[(Users Table)];
+        SA_ViewGroups[Admin/SA Views All Groups] --> DB_Groups[(Groups Table)];
+        SA_CreateAdmin[SuperAdmin Creates Admin] --> BE_UpdateRole{Backend: Update User Role};
+    end
+
+    subgraph "Backend Processing & Database"
+        BE_CreateUser --> DB_Users[(Users Table)];
+        BE_AuthUser --> DB_Users;
+        BE_CreateGroupRec --> DB_Groups[(Groups Table)];
+        BE_SuggestUsers --> DB_Users;
+        BE_CreateMembership --> DB_GroupMemberships[(GroupMemberships Table)];
+        BE_UpdateRole --> DB_Users;
+
+        BE_CheckMembership --> DB_GroupMemberships;
+        DB_GroupMemberships -- User's GroupIDs --> BE_FetchGroupData{Backend: Fetch Data for User's Groups};
+        %% Assuming a GroupData/Files table exists linked by GroupID
+        BE_FetchGroupData -- Filtered Data --> U_AccessData;
+
+
+        BE_CheckPermission --> DB_GroupMemberships;
+        DB_GroupMemberships -- Specific Permission --> BE_AllowDeny{Backend: Allow/Deny Action};
+        BE_AllowDeny -- Allowed --> U_EditData; %% Action proceeds
+        BE_AllowDeny -- Denied --> U_EditData; %% Action blocked
+    end
+
+    %% Database Relationships (Implied Foreign Keys)
+    DB_GroupMemberships -- References --> DB_Users;
+    DB_GroupMemberships -- References --> DB_Groups;
+    DB_Groups -- References --> DB_Users; %% CreatedByUserID
+    DB_GroupMemberships -- References --> DB_Users; %% AddedByUserID
+
+    style DB_Users fill:#lightblue,stroke:#333,stroke-width:2px
+    style DB_Groups fill:#lightgreen,stroke:#333,stroke-width:2px
+    style DB_GroupMemberships fill:#lightcoral,stroke:#333,stroke-width:2px
+
+
+This flow covers the essential interactions and logic, demonstrating how the frontend UI connects with the backend rules defined by the user, group, and permission tables.
+
+
