@@ -1,0 +1,206 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+// Define the Group type
+export type Group = {
+  id: number;
+  name: string;
+  createdById: number | null;
+  createdAt: string;
+};
+
+// Define the GroupMembership type
+export type GroupMembership = {
+  id: number;
+  userId: number;
+  groupId: number;
+  permission: "View" | "Edit";
+  addedById: number | null;
+  addedAt: string;
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  };
+};
+
+// Type for the API response
+export type GroupDetails = {
+  group: Group;
+  members: GroupMembership[];
+  userPermission: "View" | "Edit";
+};
+
+export function useGroups() {
+  const { toast } = useToast();
+
+  const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
+    queryKey: ["/api/groups"],
+  });
+
+  const createGroupMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/groups", { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({
+        title: "Group created",
+        description: "The group has been created successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to create group",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return {
+    groups: groupsQuery.data,
+    isLoading: groupsQuery.isLoading,
+    error: groupsQuery.error,
+    createGroup: createGroupMutation.mutate,
+  };
+}
+
+export function useGroup(groupId: number) {
+  const { toast } = useToast();
+
+  const groupQuery = useQuery<GroupDetails>({
+    queryKey: [`/api/groups/${groupId}`],
+    enabled: Boolean(groupId),
+  });
+
+  const addUserMutation = useMutation({
+    mutationFn: async ({ userId, permission }: { userId: number, permission: "View" | "Edit" }) => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/members`, { userId, permission });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
+      toast({
+        title: "User added",
+        description: "The user has been added to the group",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to add user",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePermissionMutation = useMutation({
+    mutationFn: async ({ userId, permission }: { userId: number, permission: "View" | "Edit" }) => {
+      const res = await apiRequest("PATCH", `/api/groups/${groupId}/members/${userId}`, { permission });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
+      toast({
+        title: "Permission updated",
+        description: "The user's permission has been updated",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update permission",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeUserMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      await apiRequest("DELETE", `/api/groups/${groupId}/members/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
+      toast({
+        title: "User removed",
+        description: "The user has been removed from the group",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to remove user",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateGroupMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("PATCH", `/api/groups/${groupId}`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({
+        title: "Group updated",
+        description: "The group has been updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update group",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/groups/${groupId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({
+        title: "Group deleted",
+        description: "The group has been deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to delete group",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return {
+    groupDetails: groupQuery.data,
+    isLoading: groupQuery.isLoading,
+    error: groupQuery.error,
+    addUser: addUserMutation.mutate,
+    updatePermission: updatePermissionMutation.mutate,
+    removeUser: removeUserMutation.mutate,
+    updateGroup: updateGroupMutation.mutate,
+    deleteGroup: deleteGroupMutation.mutate,
+  };
+}
+
+export function useAdminGroups() {
+  const groupsQuery = useQuery<Group[]>({
+    queryKey: ["/api/admin/groups"],
+  });
+
+  return {
+    groups: groupsQuery.data,
+    isLoading: groupsQuery.isLoading,
+    error: groupsQuery.error,
+  };
+}
