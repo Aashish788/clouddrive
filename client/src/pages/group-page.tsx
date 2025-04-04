@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useFiles } from "@/hooks/use-files";
 import { useGroup } from "@/hooks/use-group";
 import { useModal } from "@/hooks/use-modal";
+import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Plus, Upload, MoreVertical } from "lucide-react";
 import { CreateFolderDialog } from "@/components/create-folder-dialog";
 import {
@@ -22,11 +23,20 @@ export default function GroupPage() {
   const [matchGroup] = useRoute<{ groupId: string }>("/group/:groupId");
   const [matchFolder] = useRoute<{ groupId: string, folderId: string }>("/group/:groupId/folder/:folderId");
   
-  const groupId = parseInt(matchGroup?.params.groupId || matchFolder?.params.groupId || "0");
-  const folderId = matchFolder?.params.folderId ? parseInt(matchFolder.params.folderId) : null;
+  // Extract and sanitize groupId
+  const rawGroupId = matchGroup && typeof matchGroup !== 'boolean' ? matchGroup.params.groupId : 
+                     (matchFolder && typeof matchFolder !== 'boolean' ? matchFolder.params.groupId : "");
+  const groupId = rawGroupId ? parseInt(rawGroupId) : 0;
+  const folderId = matchFolder && typeof matchFolder !== 'boolean' && matchFolder.params.folderId ? 
+                   parseInt(matchFolder.params.folderId) : null;
   
-  const { groupDetails, isLoading: isGroupLoading, updateGroup } = useGroup(groupId);
+  // Only call useGroup if groupId is valid
+  const { groupDetails, isLoading: isGroupLoading, updateGroup } = useGroup(groupId || 0);
   const { openModal } = useModal();
+  const { user } = useAuth();
+  
+  // Check if user is an admin or superadmin
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
   
   const headerTitle = groupDetails?.group?.name || "Loading...";
 
@@ -98,12 +108,14 @@ export default function GroupPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleManageGroup}>
-                  Manage Group
-                </DropdownMenuItem>
-                {groupDetails.userPermission === "Edit" && (
+                {isAdmin && (
+                  <DropdownMenuItem onClick={handleManageGroup}>
+                    Manage Group
+                  </DropdownMenuItem>
+                )}
+                {(isAdmin || groupDetails.userPermission === "Edit") && (
                   <>
-                    <DropdownMenuSeparator />
+                    {isAdmin && <DropdownMenuSeparator />}
                     <DropdownMenuItem onClick={() => openModal('fileUpload', { groupId, parentId: folderId })}>
                       Upload File
                     </DropdownMenuItem>

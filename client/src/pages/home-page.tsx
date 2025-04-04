@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useModal } from "@/hooks/use-modal";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function HomePage() {
   const { groups, isLoading, createGroup } = useGroups();
@@ -15,6 +16,10 @@ export default function HomePage() {
   const [_, setLocation] = useLocation();
   const [newGroupName, setNewGroupName] = useState("");
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const { user } = useAuth();
+  
+  // Check if user is an admin or superadmin
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
   
   const handleCreateGroup = () => {
     if (newGroupName.trim()) {
@@ -31,13 +36,15 @@ export default function HomePage() {
           <h1 className="text-2xl font-semibold text-gray-900">My Drive</h1>
           
           <div className="flex items-center space-x-3">
-            <Button 
-              className="inline-flex items-center"
-              onClick={() => setIsCreatingGroup(true)}
-            >
-              <PlusIcon className="mr-2 h-4 w-4" />
-              New Group
-            </Button>
+            {isAdmin && (
+              <Button 
+                className="inline-flex items-center"
+                onClick={() => setIsCreatingGroup(true)}
+              >
+                <PlusIcon className="mr-2 h-4 w-4" />
+                New Group
+              </Button>
+            )}
           </div>
         </div>
         
@@ -113,11 +120,18 @@ export default function HomePage() {
           ) : (
             <div className="bg-white rounded-lg p-8 text-center border border-gray-200">
               <h3 className="text-lg font-medium text-gray-900 mb-2">No groups yet</h3>
-              <p className="text-gray-500 mb-4">Create a new group to start organizing your files</p>
-              <Button onClick={() => setIsCreatingGroup(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Group
-              </Button>
+              <p className="text-gray-500 mb-4">
+                {isAdmin 
+                  ? "Create a new group to start organizing your files" 
+                  : "Contact an administrator to create a group for you"
+                }
+              </p>
+              {isAdmin && (
+                <Button onClick={() => setIsCreatingGroup(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Group
+                </Button>
+              )}
             </div>
           )}
         </div>

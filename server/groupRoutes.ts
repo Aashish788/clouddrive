@@ -48,12 +48,9 @@ export function setupGroupRoutes(app: Express) {
     }
   });
   
-  // Create a new group - any authenticated user can create groups
-  app.post("/api/groups", async (req, res, next) => {
+  // Create a new group - only admin and superadmin can create groups
+  app.post("/api/groups", requireAdmin, async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
       
       // Validate input
       const result = createGroupSchema.safeParse(req.body);
@@ -180,24 +177,12 @@ export function setupGroupRoutes(app: Express) {
     }
   });
   
-  // Add a user to a group (requires Edit permission or admin role)
-  app.post("/api/groups/:id/members", async (req, res, next) => {
+  // Add a user to a group (admin only)
+  app.post("/api/groups/:id/members", requireAdmin, async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       const groupId = Number(req.params.id);
       if (isNaN(groupId)) {
         return res.status(400).json({ message: "Invalid group ID" });
-      }
-      
-      // Check if user has edit permission or is an admin
-      const currentUser = req.user as User;
-      const userPermission = await storage.getUserPermissionForGroup(currentUser.id, groupId);
-      
-      if (!(userPermission === "Edit" || currentUser.role === "Admin" || currentUser.role === "SuperAdmin")) {
-        return res.status(403).json({ message: "Edit permission required to add users" });
       }
       
       // Validate input

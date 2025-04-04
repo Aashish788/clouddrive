@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useModal } from "@/hooks/use-modal";
 import { useGroup, GroupMembership } from "@/hooks/use-group";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Select,
   SelectContent,
@@ -16,10 +17,14 @@ import { Trash, Plus } from "lucide-react";
 
 export function GroupManagementModal() {
   const { activeModal, modalData, closeModal } = useModal();
+  const { user } = useAuth();
   const [groupName, setGroupName] = useState("");
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedPermission, setSelectedPermission] = useState<"View" | "Edit">("View");
+  
+  // Check if user is an admin or superadmin
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
   
   const groupId = modalData?.groupId;
   const { 
@@ -33,9 +38,9 @@ export function GroupManagementModal() {
   const isOpen = activeModal === 'groupManagement';
   
   // Get all users for the add member dropdown
-  const { data: users } = useQuery({
+  const { data: users } = useQuery<any[]>({
     queryKey: ["/api/admin/users"],
-    enabled: isOpen,
+    enabled: isOpen && isAdmin,
   });
   
   useEffect(() => {
@@ -74,9 +79,9 @@ export function GroupManagementModal() {
   };
   
   // Filter out users that are already in the group
-  const availableUsers = users?.filter(
-    (user) => !groupDetails.members.some((member) => member.userId === user.id)
-  );
+  const availableUsers = users ? users.filter(
+    (user: any) => !groupDetails.members.some((member) => member.userId === user.id)
+  ) : [];
   
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
@@ -95,21 +100,24 @@ export function GroupManagementModal() {
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               className="w-full"
+              disabled={!isAdmin}
             />
           </div>
           
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-700">Group Members</h3>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-primary-600"
-                onClick={() => setShowAddMember(true)}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Member
-              </Button>
+              {isAdmin && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-primary-600"
+                  onClick={() => setShowAddMember(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Member
+                </Button>
+              )}
             </div>
             
             {showAddMember && (
@@ -184,25 +192,33 @@ export function GroupManagementModal() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <Select 
-                        defaultValue={member.permission}
-                        onValueChange={(value) => handlePermissionChange(member.userId, value as "View" | "Edit")}
-                      >
-                        <SelectTrigger className="w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="View">View Only</SelectItem>
-                          <SelectItem value="Edit">View & Edit</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleRemoveMember(member.userId)}
-                      >
-                        <Trash className="h-4 w-4 text-gray-500 hover:text-red-500" />
-                      </Button>
+                      {isAdmin ? (
+                        <>
+                          <Select 
+                            defaultValue={member.permission}
+                            onValueChange={(value) => handlePermissionChange(member.userId, value as "View" | "Edit")}
+                          >
+                            <SelectTrigger className="w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="View">View Only</SelectItem>
+                              <SelectItem value="Edit">View & Edit</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => handleRemoveMember(member.userId)}
+                          >
+                            <Trash className="h-4 w-4 text-gray-500 hover:text-red-500" />
+                          </Button>
+                        </>
+                      ) : (
+                        <div className="px-3 py-2 text-sm bg-gray-100 rounded">
+                          {member.permission === "Edit" ? "View & Edit" : "View Only"}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))
@@ -212,8 +228,10 @@ export function GroupManagementModal() {
         </div>
         
         <DialogFooter className="bg-gray-50 px-4 py-3 sm:px-6 rounded-b-lg">
-          <Button variant="outline" onClick={closeModal} className="mr-2">Cancel</Button>
-          <Button onClick={handleSave}>Save Changes</Button>
+          <Button variant="outline" onClick={closeModal} className="mr-2">
+            {isAdmin ? "Cancel" : "Close"}
+          </Button>
+          {isAdmin && <Button onClick={handleSave}>Save Changes</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
