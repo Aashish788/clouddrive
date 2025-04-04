@@ -40,8 +40,26 @@ export function setupGroupRoutes(app: Express) {
       }
       
       const userId = req.user!.id;
-      const userGroups = await storage.getUserGroups(userId);
+      const userRole = req.user!.role;
       
+      // If user is admin or superadmin, return all groups
+      if (userRole === "Admin" || userRole === "SuperAdmin") {
+        const allGroups = await storage.getAllGroups();
+        // Format the response to match getUserGroups output structure
+        const formattedGroups = allGroups.map(group => ({
+          group,
+          userId,
+          groupId: group.id,
+          permission: "Edit" as const, // Admins get edit permission by default
+          id: 0, // Placeholder for membership ID
+          addedById: null,
+          addedAt: new Date().toISOString()
+        }));
+        return res.json(formattedGroups);
+      }
+      
+      // For regular users, only return groups they are members of
+      const userGroups = await storage.getUserGroups(userId);
       res.json(userGroups);
     } catch (error) {
       next(error);
@@ -100,16 +118,28 @@ export function setupGroupRoutes(app: Express) {
         return res.status(404).json({ message: "Group not found" });
       }
       
-      // Check if user has access to this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, groupId);
+      const userRole = req.user!.role;
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this group" });
+      // Admin or SuperAdmin can access any group
+      const isAdmin = userRole === "Admin" || userRole === "SuperAdmin";
+      
+      if (!isAdmin) {
+        // Regular users need to check permission
+        const userPermission = await storage.getUserPermissionForGroup(userId, groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this group" });
+        }
       }
       
-      // Get the group members (only for admins or group members)
+      // Get the group members
       const members = await storage.getGroupMembers(groupId);
+      
+      // For admins who aren't group members, return Edit permission by default
+      const userPermission = isAdmin 
+        ? await storage.getUserPermissionForGroup(userId, groupId) || "Edit" 
+        : await storage.getUserPermissionForGroup(userId, groupId);
       
       res.json({
         group,

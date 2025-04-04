@@ -3,13 +3,16 @@ import { AppLayout } from "@/components/layout/layout";
 import { useGroups } from "@/hooks/use-group";
 import { FileExplorer } from "@/components/file-explorer";
 import { Button } from "@/components/ui/button";
-import { Plus, Upload, Plus as PlusIcon } from "lucide-react";
+import { Plus, Upload, Users, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useModal } from "@/hooks/use-modal";
 import { useLocation, useRoute } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { CreateFolderDialog } from "@/components/create-folder-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function HomePage() {
   const { groups, isLoading, createGroup } = useGroups();
@@ -51,7 +54,7 @@ export default function HomePage() {
                 className="inline-flex items-center"
                 onClick={() => setIsCreatingGroup(true)}
               >
-                <PlusIcon className="mr-2 h-4 w-4" />
+                <Plus className="mr-2 h-4 w-4" />
                 New Group
               </Button>
             )}
@@ -183,4 +186,4 @@ export default function HomePage() {
   );
 }
 
-import { Users } from "lucide-react";
+
