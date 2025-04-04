@@ -5,12 +5,12 @@ import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User } from "@shared/schema";
+import { User as UserType } from "@shared/schema";
 import { z } from "zod";
 
 declare global {
   namespace Express {
-    interface User extends User {}
+    interface User extends UserType {}
   }
 }
 
@@ -44,7 +44,7 @@ const registerSchema = z.object({
 
 export function setupAuth(app: Express) {
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "super-secret-key",
+    secret: process.env.SESSION_SECRET || `drive-app-secret-${Date.now()}-${Math.random()}`,
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
@@ -132,7 +132,7 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "Invalid input", errors: result.error.errors });
       }
 
-      passport.authenticate("local", (err: any, user: User | false) => {
+      passport.authenticate("local", (err: any, user: UserType | false) => {
         if (err) return next(err);
         if (!user) {
           return res.status(401).json({ message: "Invalid email or password" });
@@ -164,7 +164,7 @@ export function setupAuth(app: Express) {
     }
     
     // Remove password from the response
-    const { password, ...userWithoutPassword } = req.user as User;
+    const { password, ...userWithoutPassword } = req.user as UserType;
     res.json(userWithoutPassword);
   });
 }

@@ -6,12 +6,10 @@ import {
   folders, type Folder, type InsertFolder, 
   type Permission
 } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-
-const MemoryStore = createMemoryStore(session);
 
 export interface IStorage {
   // User methods
@@ -51,13 +49,16 @@ export interface IStorage {
   deleteFolder(id: number): Promise<boolean>;
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Using any to avoid SessionStore typing issues
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Using any for session store type
   
   constructor() {
+    // Instead of using the PostgreSQL session store, we'll use a memory store for now
+    // to prevent errors with the database connection
+    const MemoryStore = createMemoryStore(session);
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // Prune expired entries every 24h
     });
@@ -80,9 +81,11 @@ export class DatabaseStorage implements IStorage {
   }
   
   async updateUserRole(id: number, role: string): Promise<User | undefined> {
+    // Cast the role to the expected type
+    const userRole = role as "User" | "Admin" | "SuperAdmin";
     const [user] = await db
       .update(users)
-      .set({ role })
+      .set({ role: userRole })
       .where(eq(users.id, id))
       .returning();
     return user;

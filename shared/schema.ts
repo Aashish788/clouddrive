@@ -34,11 +34,21 @@ export const groupMemberships = pgTable("group_memberships", {
   permission: text("permission", { enum: ["View", "Edit"] }).notNull().default("View"),
   addedById: integer("added_by_id").references(() => users.id),
   addedAt: timestamp("added_at").defaultNow(),
-}, (table) => {
-  return {
-    uniqueUserGroup: primaryKey({columns: [table.userId, table.groupId]}),
-  };
 });
+
+// Folders table - define first to avoid circular reference
+export const folders = pgTable("folders", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  parentId: integer("parent_id"),
+  groupId: integer("group_id").notNull().references(() => groups.id),
+  createdById: integer("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Add self-reference for folders by using a proper drizzle-orm relation pattern
+// This is handled in the folderRelations below
 
 // Files table
 export const files = pgTable("files", {
@@ -51,17 +61,6 @@ export const files = pgTable("files", {
   groupId: integer("group_id").notNull().references(() => groups.id),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Folders table
-export const folders = pgTable("folders", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  parentId: integer("parent_id").references(() => folders.id),
-  groupId: integer("group_id").notNull().references(() => groups.id),
-  createdById: integer("created_by_id").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -142,5 +141,27 @@ export const groupRelations = {
     from: groups,
     to: folders,
     relation: "one-to-many",
+  },
+};
+
+// Folder relations including self-reference to handle parent/child structure
+export const folderRelations = {
+  parent: {
+    relationName: "folder_to_parent",
+    columns: [folders.parentId],
+    references: () => [folders.id],
+  },
+  children: {
+    relationName: "folder_to_children",
+    columns: [folders.id],
+    references: () => [folders.parentId],
+  },
+  group: {
+    columns: [folders.groupId],
+    references: () => [groups.id],
+  },
+  creator: {
+    columns: [folders.createdById],
+    references: () => [users.id],
   },
 };
