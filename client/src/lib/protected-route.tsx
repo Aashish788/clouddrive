@@ -7,7 +7,7 @@ export function ProtectedRoute({
   component: Component,
 }: {
   path: string;
-  component: () => React.JSX.Element;
+  component: () => React.JSX.Element | null;
 }) {
   const { user, isLoading } = useAuth();
 
@@ -29,7 +29,11 @@ export function ProtectedRoute({
     );
   }
 
-  return <Route path={path} component={Component} />
+  return (
+    <Route path={path}>
+      <Component />
+    </Route>
+  );
 }
 
 export function AdminRoute({
@@ -37,7 +41,7 @@ export function AdminRoute({
   component: Component,
 }: {
   path: string;
-  component: () => React.JSX.Element;
+  component: () => React.JSX.Element | null;
 }) {
   const { user, isLoading } = useAuth();
 
@@ -67,5 +71,9 @@ export function AdminRoute({
     );
   }
 
-  return <Route path={path} component={Component} />
+  return (
+    <Route path={path}>
+      <Component />
+    </Route>
+  );
 }

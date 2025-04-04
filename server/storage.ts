@@ -41,6 +41,7 @@ export interface IStorage {
   createFile(file: InsertFile): Promise<File>;
   getFile(id: number): Promise<File | undefined>;
   getFilesByParent(parentId: number | null, groupId: number): Promise<File[]>;
+  getPersonalFilesByParent(parentId: number | null, userId: number): Promise<File[]>;
   updateFile(id: number, name: string): Promise<File | undefined>;
   deleteFile(id: number): Promise<boolean>;
   
@@ -48,6 +49,7 @@ export interface IStorage {
   createFolder(folder: InsertFolder): Promise<Folder>;
   getFolder(id: number): Promise<Folder | undefined>;
   getFoldersByParent(parentId: number | null, groupId: number): Promise<Folder[]>;
+  getPersonalFoldersByParent(parentId: number | null, userId: number): Promise<Folder[]>;
   updateFolder(id: number, name: string): Promise<Folder | undefined>;
   deleteFolder(id: number): Promise<boolean>;
   
@@ -272,6 +274,32 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
   
+  async getPersonalFilesByParent(parentId: number | null, userId: number): Promise<File[]> {
+    if (parentId === null) {
+      return await db
+        .select()
+        .from(files)
+        .where(
+          and(
+            isNull(files.parentId),
+            isNull(files.groupId),
+            eq(files.uploadedById, userId)
+          )
+        );
+    } else {
+      return await db
+        .select()
+        .from(files)
+        .where(
+          and(
+            eq(files.parentId, parentId),
+            isNull(files.groupId),
+            eq(files.uploadedById, userId)
+          )
+        );
+    }
+  }
+  
   // Folder methods
   async createFolder(folder: InsertFolder): Promise<Folder> {
     const [newFolder] = await db.insert(folders).values(folder).returning();
@@ -322,6 +350,32 @@ export class DatabaseStorage implements IStorage {
   async deleteFolder(id: number): Promise<boolean> {
     await db.delete(folders).where(eq(folders.id, id));
     return true;
+  }
+  
+  async getPersonalFoldersByParent(parentId: number | null, userId: number): Promise<Folder[]> {
+    if (parentId === null) {
+      return await db
+        .select()
+        .from(folders)
+        .where(
+          and(
+            isNull(folders.parentId),
+            isNull(folders.groupId),
+            eq(folders.createdById, userId)
+          )
+        );
+    } else {
+      return await db
+        .select()
+        .from(folders)
+        .where(
+          and(
+            eq(folders.parentId, parentId),
+            isNull(folders.groupId),
+            eq(folders.createdById, userId)
+          )
+        );
+    }
   }
   
   // File share methods

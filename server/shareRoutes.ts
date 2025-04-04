@@ -48,18 +48,31 @@ async function validateSharePermission(
     return null;
   }
 
-  // Check if user has edit permissions for the group
+  // Check if user has permissions for the item
   const userId = req.user!.id;
-  const userPermission = await storage.getUserPermissionForGroup(userId, item.groupId);
+  
+  // For personal files/folders (null groupId)
+  if (item.groupId === null) {
+    // For personal items, check if the user is the owner
+    const ownerId = itemType === 'file' ? (item as any).uploadedById : (item as any).createdById;
+    
+    if (ownerId !== userId) {
+      res.status(403).json({ message: `You don't have access to this ${itemType}` });
+      return null;
+    }
+  } else {
+    // For group files/folders, check permissions
+    const userPermission = await storage.getUserPermissionForGroup(userId, item.groupId);
 
-  if (!userPermission) {
-    res.status(403).json({ message: `You don't have access to this ${itemType}` });
-    return null;
-  }
+    if (!userPermission) {
+      res.status(403).json({ message: `You don't have access to this ${itemType}` });
+      return null;
+    }
 
-  if (userPermission !== "Edit") {
-    res.status(403).json({ message: `You need edit permission to share this ${itemType}` });
-    return null;
+    if (userPermission !== "Edit") {
+      res.status(403).json({ message: `You need edit permission to share this ${itemType}` });
+      return null;
+    }
   }
 
   return { item };

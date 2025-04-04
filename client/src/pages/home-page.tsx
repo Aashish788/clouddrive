@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Plus, Upload, Plus as PlusIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useModal } from "@/hooks/use-modal";
-import { useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { CreateFolderDialog } from "@/components/create-folder-dialog";
 
 export default function HomePage() {
   const { groups, isLoading, createGroup } = useGroups();
@@ -16,10 +17,19 @@ export default function HomePage() {
   const [_, setLocation] = useLocation();
   const [newGroupName, setNewGroupName] = useState("");
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const { user } = useAuth();
+  
+  // Check if we're viewing a personal folder
+  const [matchPersonalFolder, params] = useRoute<{ folderId: string }>("/personal/folder/:folderId");
+  const personalFolderId = matchPersonalFolder ? parseInt(params.folderId) : null;
   
   // Check if user is an admin or superadmin
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
+  
+  const handleCreateFolder = () => {
+    setIsCreateFolderOpen(true);
+  };
   
   const handleCreateGroup = () => {
     if (newGroupName.trim()) {
@@ -45,6 +55,14 @@ export default function HomePage() {
                 New Group
               </Button>
             )}
+            <Button 
+              variant="outline"
+              onClick={() => openModal('fileUpload', { groupId: null, parentId: null })}
+              className="inline-flex items-center"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Upload File
+            </Button>
           </div>
         </div>
         
@@ -65,6 +83,31 @@ export default function HomePage() {
           </div>
         )}
         
+        {/* Personal Files Section */}
+        <div className="mb-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-3">
+            My Personal Files
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-2"
+              onClick={handleCreateFolder}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              New Folder
+            </Button>
+          </h2>
+          <FileExplorer groupId={null} parentId={personalFolderId} />
+          
+          <CreateFolderDialog
+            open={isCreateFolderOpen}
+            onOpenChange={setIsCreateFolderOpen}
+            groupId={0} // Dummy group ID for personal files (will be ignored)
+            parentId={personalFolderId}
+          />
+        </div>
+
+        {/* Groups Section */}
         <div className="mb-8">
           <h2 className="text-lg font-medium text-gray-900 mb-3">My Groups</h2>
           

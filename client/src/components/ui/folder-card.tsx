@@ -10,7 +10,7 @@ import { useLocation } from "wouter";
 interface FolderCardProps {
   folder: Folder;
   permission: "View" | "Edit";
-  groupId: number;
+  groupId: number | null;
   onNavigate?: () => void;
 }
 
@@ -24,7 +24,12 @@ export function FolderCard({ folder, permission, groupId, onNavigate }: FolderCa
   };
 
   const handleFolderClick = () => {
-    setLocation(`/group/${groupId}/folder/${folder.id}`);
+    if (groupId) {
+      setLocation(`/group/${groupId}/folder/${folder.id}`);
+    } else {
+      // For personal files, use a different URL pattern
+      setLocation(`/personal/folder/${folder.id}`);
+    }
     if (onNavigate) onNavigate();
   };
 

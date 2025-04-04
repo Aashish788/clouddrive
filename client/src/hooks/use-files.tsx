@@ -34,21 +34,29 @@ export type Folder = {
   updatedAt: string;
 };
 
-export function useFiles(groupId: number, parentId: number | null = null) {
+export function useFiles(groupId: number | null, parentId: number | null = null) {
   const { toast } = useToast();
 
   const filesQuery = useQuery<FilesData>({
     queryKey: ["/api/files", groupId, parentId],
     queryFn: async ({ queryKey }) => {
       const [_, gId, pId] = queryKey;
-      const url = `/api/files?groupId=${gId}${pId !== null ? `&parentId=${pId}` : ''}`;
+      let url = '';
+      
+      // If groupId is null or 0, we're in personal files mode
+      if (!gId || gId === 0) {
+        url = `/api/personal-files${pId !== null ? `?parentId=${pId}` : ''}`;
+      } else {
+        url = `/api/files?groupId=${gId}${pId !== null ? `&parentId=${pId}` : ''}`;
+      }
+      
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) {
         throw new Error("Failed to fetch files");
       }
       return res.json();
     },
-    enabled: groupId !== undefined,
+    enabled: true,
   });
 
   const createFolderMutation = useMutation({

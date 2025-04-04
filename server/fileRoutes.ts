@@ -20,7 +20,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 const createFolderSchema = z.object({
   name: z.string().min(1).max(255),
   parentId: z.number().nullable().optional(),
-  groupId: z.number(),
+  groupId: z.number().nullable(),
 });
 
 const updateNameSchema = z.object({
@@ -54,6 +54,35 @@ async function checkGroupPermission(
 }
 
 export function setupFileRoutes(app: Express) {
+  // Get personal files and folders
+  app.get("/api/personal-files", async (req, res, next) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const parentId = req.query.parentId ? Number(req.query.parentId) : null;
+      
+      if (req.query.parentId && isNaN(Number(req.query.parentId))) {
+        return res.status(400).json({ message: "Invalid parent ID" });
+      }
+      
+      const userId = req.user!.id;
+      
+      // For personal files, we don't use groupId but we'll pass null
+      // We need to modify the storage implementation to handle this case
+      const files = await storage.getPersonalFilesByParent(parentId, userId);
+      const folders = await storage.getPersonalFoldersByParent(parentId, userId);
+      
+      res.json({
+        files,
+        folders,
+        permission: "Edit" // Personal files always have Edit permission
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
   // Get files and folders in a group or folder
   app.get("/api/files", async (req, res, next) => {
     try {
@@ -94,6 +123,53 @@ export function setupFileRoutes(app: Express) {
     }
   });
   
+  // Create a personal folder
+  app.post("/api/personal-folders", async (req, res, next) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Validate input
+      const folderSchema = z.object({
+        name: z.string().min(1).max(255),
+        parentId: z.number().nullable().optional(),
+      });
+      
+      const result = folderSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: "Invalid input", errors: result.error.errors });
+      }
+      
+      const { name, parentId } = result.data;
+      const userId = req.user!.id;
+      
+      // If parentId is provided, check if it exists and belongs to the user
+      if (parentId) {
+        const parentFolder = await storage.getFolder(parentId);
+        if (!parentFolder) {
+          return res.status(404).json({ message: "Parent folder not found" });
+        }
+        
+        if (parentFolder.createdById !== userId || parentFolder.groupId !== null) {
+          return res.status(403).json({ message: "You don't have access to this parent folder" });
+        }
+      }
+      
+      // Create the folder (with null groupId for personal folders)
+      const newFolder = await storage.createFolder({
+        name,
+        parentId: parentId || null,
+        groupId: null,
+        createdById: userId
+      });
+      
+      res.status(201).json(newFolder);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
   // Create a new folder
   app.post("/api/folders", async (req, res, next) => {
     try {
@@ -111,14 +187,18 @@ export function setupFileRoutes(app: Express) {
       
       // Check if user has edit permissions for this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, groupId);
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this group" });
-      }
-      
-      if (userPermission !== "Edit") {
-        return res.status(403).json({ message: "You need edit permission to create folders" });
+      // For group folders, check permissions
+      if (groupId !== null) {
+        const userPermission = await storage.getUserPermissionForGroup(userId, groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this group" });
+        }
+        
+        if (userPermission !== "Edit") {
+          return res.status(403).json({ message: "You need edit permission to create folders" });
+        }
       }
       
       // If parentId is provided, check if it exists and belongs to the same group
@@ -176,14 +256,24 @@ export function setupFileRoutes(app: Express) {
       
       // Check if user has edit permissions for this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, folder.groupId);
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this folder" });
-      }
-      
-      if (userPermission !== "Edit") {
-        return res.status(403).json({ message: "You need edit permission to rename folders" });
+      // Check if this is a personal folder (null groupId)
+      if (folder.groupId === null) {
+        // For personal folders, check if the user is the creator
+        if (folder.createdById !== userId) {
+          return res.status(403).json({ message: "You don't have access to this folder" });
+        }
+      } else {
+        // For group folders, check permissions
+        const userPermission = await storage.getUserPermissionForGroup(userId, folder.groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this folder" });
+        }
+        
+        if (userPermission !== "Edit") {
+          return res.status(403).json({ message: "You need edit permission to rename folders" });
+        }
       }
       
       // Update the folder
@@ -216,20 +306,88 @@ export function setupFileRoutes(app: Express) {
       
       // Check if user has edit permissions for this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, folder.groupId);
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this folder" });
-      }
-      
-      if (userPermission !== "Edit") {
-        return res.status(403).json({ message: "You need edit permission to delete folders" });
+      // Check if this is a personal folder (null groupId)
+      if (folder.groupId === null) {
+        // For personal folders, check if the user is the creator
+        if (folder.createdById !== userId) {
+          return res.status(403).json({ message: "You don't have access to this folder" });
+        }
+      } else {
+        // For group folders, check permissions
+        const userPermission = await storage.getUserPermissionForGroup(userId, folder.groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this folder" });
+        }
+        
+        if (userPermission !== "Edit") {
+          return res.status(403).json({ message: "You need edit permission to delete folders" });
+        }
       }
       
       // Delete the folder (in a real application, we would recursively delete all contents)
       await storage.deleteFolder(folderId);
       
       res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  // Upload a personal file
+  app.post("/api/personal-files", async (req, res, next) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // In a real application, this would use a multipart form parser like multer
+      // For simplicity, we'll use JSON with base64 encoded data
+      const { name, parentId, type, data } = req.body;
+      
+      if (!name || !type || !data) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      const userId = req.user!.id;
+      
+      // If parentId is provided, check if it exists and belongs to the user
+      if (parentId) {
+        const parentFolder = await storage.getFolder(Number(parentId));
+        if (!parentFolder) {
+          return res.status(404).json({ message: "Parent folder not found" });
+        }
+        
+        if (parentFolder.createdById !== userId || parentFolder.groupId !== null) {
+          return res.status(403).json({ message: "You don't have access to this parent folder" });
+        }
+      }
+      
+      // Create a unique filename
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const filePath = path.join(UPLOAD_DIR, fileName);
+      
+      // Decode and save the file
+      const fileBuffer = Buffer.from(data, 'base64');
+      await writeFileAsync(filePath, fileBuffer);
+      
+      // Calculate file size
+      const size = fileBuffer.length;
+      
+      // Create the file record (with null groupId for personal files)
+      const newFile = await storage.createFile({
+        name,
+        type,
+        size,
+        path: filePath,
+        parentId: parentId ? Number(parentId) : null,
+        groupId: null,
+        uploadedById: userId
+      });
+      
+      res.status(201).json(newFile);
     } catch (error) {
       next(error);
     }
@@ -332,14 +490,24 @@ export function setupFileRoutes(app: Express) {
       
       // Check if user has edit permissions for this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, file.groupId);
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this file" });
-      }
-      
-      if (userPermission !== "Edit") {
-        return res.status(403).json({ message: "You need edit permission to rename files" });
+      // Check if this is a personal file (null groupId)
+      if (file.groupId === null) {
+        // For personal files, check if the user is the uploader
+        if (file.uploadedById !== userId) {
+          return res.status(403).json({ message: "You don't have access to this file" });
+        }
+      } else {
+        // For group files, check permissions
+        const userPermission = await storage.getUserPermissionForGroup(userId, file.groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this file" });
+        }
+        
+        if (userPermission !== "Edit") {
+          return res.status(403).json({ message: "You need edit permission to rename files" });
+        }
       }
       
       // Update the file
@@ -372,14 +540,24 @@ export function setupFileRoutes(app: Express) {
       
       // Check if user has edit permissions for this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, file.groupId);
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this file" });
-      }
-      
-      if (userPermission !== "Edit") {
-        return res.status(403).json({ message: "You need edit permission to delete files" });
+      // Check if this is a personal file (null groupId)
+      if (file.groupId === null) {
+        // For personal files, check if the user is the uploader
+        if (file.uploadedById !== userId) {
+          return res.status(403).json({ message: "You don't have access to this file" });
+        }
+      } else {
+        // For group files, check permissions
+        const userPermission = await storage.getUserPermissionForGroup(userId, file.groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this file" });
+        }
+        
+        if (userPermission !== "Edit") {
+          return res.status(403).json({ message: "You need edit permission to delete files" });
+        }
       }
       
       // Delete the file from the filesystem
@@ -419,10 +597,20 @@ export function setupFileRoutes(app: Express) {
       
       // Check if user has view permissions for this group
       const userId = req.user!.id;
-      const userPermission = await storage.getUserPermissionForGroup(userId, file.groupId);
       
-      if (!userPermission) {
-        return res.status(403).json({ message: "You don't have access to this file" });
+      // Check if this is a personal file (null groupId)
+      if (file.groupId === null) {
+        // For personal files, check if the user is the uploader
+        if (file.uploadedById !== userId) {
+          return res.status(403).json({ message: "You don't have access to this file" });
+        }
+      } else {
+        // For group files, check permissions
+        const userPermission = await storage.getUserPermissionForGroup(userId, file.groupId);
+        
+        if (!userPermission) {
+          return res.status(403).json({ message: "You don't have access to this file" });
+        }
       }
       
       // Send the file

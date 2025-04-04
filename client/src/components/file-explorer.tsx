@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface FileExplorerProps {
-  groupId: number;
+  groupId: number | null;
   parentId: number | null;
 }
 
@@ -171,7 +171,7 @@ export function FileExplorer({ groupId, parentId }: FileExplorerProps) {
                     <div 
                       key={folder.id} 
                       className="flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setLocation(`/group/${groupId}/folder/${folder.id}`)}
+                      onClick={() => groupId ? setLocation(`/group/${groupId}/folder/${folder.id}`) : setLocation(`/personal/folder/${folder.id}`)}
                     >
                       <div className="flex items-center">
                         <div className="h-10 w-10 rounded-md bg-secondary-100 text-secondary-600 flex items-center justify-center mr-3">

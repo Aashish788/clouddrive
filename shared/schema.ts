@@ -41,7 +41,7 @@ export const folders = pgTable("folders", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   parentId: integer("parent_id"),
-  groupId: integer("group_id").notNull().references(() => groups.id),
+  groupId: integer("group_id").references(() => groups.id), // Nullable for personal folders
   createdById: integer("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -58,7 +58,7 @@ export const files = pgTable("files", {
   size: integer("size").notNull(),
   path: text("path").notNull(),
   parentId: integer("parent_id").references(() => folders.id),
-  groupId: integer("group_id").notNull().references(() => groups.id),
+  groupId: integer("group_id").references(() => groups.id), // Nullable for personal files
   uploadedById: integer("uploaded_by_id").references(() => users.id),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

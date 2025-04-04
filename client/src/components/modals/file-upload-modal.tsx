@@ -27,7 +27,7 @@ export function FileUploadModal() {
   };
   
   const handleUpload = async () => {
-    if (!selectedFile || !groupId) return;
+    if (!selectedFile) return;
     
     setUploading(true);
     setProgress(10);
@@ -47,12 +47,12 @@ export function FileUploadModal() {
         // Remove the data:mimetype;base64, prefix
         const base64Content = base64Data.split(',')[1];
         
-        // Upload the file
+        // Upload the file - if groupId is null, use a "personal" storage area
         uploadFile({
           name: selectedFile.name,
           type: selectedFile.type,
           data: base64Content,
-          groupId,
+          groupId: groupId || 0, // Use 0 to indicate personal files
           parentId: parentId || null
         });
         

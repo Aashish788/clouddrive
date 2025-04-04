@@ -19,6 +19,7 @@ function Router() {
       <ProtectedRoute path="/" component={HomePage} />
       <ProtectedRoute path="/group/:groupId" component={GroupPage} />
       <ProtectedRoute path="/group/:groupId/folder/:folderId" component={GroupPage} />
+      <ProtectedRoute path="/personal/folder/:folderId" component={HomePage} />
       <AdminRoute path="/admin/users" component={UserManagementPage} />
       <AdminRoute path="/admin/groups" component={GroupManagementPage} />
       <Route path="/auth" component={AuthPage} />
