@@ -66,9 +66,9 @@ export function FileActionModal() {
     if (isRenaming) {
       if (newName && newName !== item.name) {
         if (isFolder) {
-          renameFolder({ folderId: item.id, name: newName });
+          renameFolder(item.id, newName);
         } else {
-          renameFile({ fileId: item.id, name: newName });
+          renameFile(item.id, newName);
         }
       }
       setIsRenaming(false);

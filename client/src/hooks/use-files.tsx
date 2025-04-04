@@ -72,8 +72,11 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       const res = await apiRequest("POST", url, payload);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", groupId, parentId] });
+    onSuccess: (_, variables) => {
+      // Invalidate the query for the specific folder where the new folder was created
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/files", variables.groupId, variables.parentId] 
+      });
       toast({
         title: "Folder created",
         description: "The folder has been created successfully",
@@ -101,8 +104,13 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       const res = await apiRequest("POST", url, payload);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", groupId, parentId] });
+    onSuccess: (_, variables) => {
+      // Invalidate the query for the specific folder where the file was uploaded
+      // This ensures that when we upload to a folder, the folder's content is refreshed
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/files", variables.groupId, variables.parentId] 
+      });
+      
       toast({
         title: "File uploaded",
         description: "The file has been uploaded successfully",
@@ -118,11 +126,16 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const deleteFileMutation = useMutation({
-    mutationFn: async (fileId: number) => {
+    mutationFn: async ({ fileId, groupId: fileGroupId, parentId: fileParentId }: 
+      { fileId: number, groupId: number | null, parentId: number | null }) => {
       await apiRequest("DELETE", `/api/files/${fileId}`);
+      return { groupId: fileGroupId, parentId: fileParentId };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", groupId, parentId] });
+    onSuccess: (result) => {
+      // Invalidate the specific folder query where the file was deleted from
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/files", result.groupId, result.parentId] 
+      });
       toast({
         title: "File deleted",
         description: "The file has been deleted successfully",
@@ -138,11 +151,16 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const deleteFolderMutation = useMutation({
-    mutationFn: async (folderId: number) => {
+    mutationFn: async ({ folderId, groupId: folderGroupId, parentId: folderParentId }: 
+      { folderId: number, groupId: number | null, parentId: number | null }) => {
       await apiRequest("DELETE", `/api/folders/${folderId}`);
+      return { groupId: folderGroupId, parentId: folderParentId };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", groupId, parentId] });
+    onSuccess: (result) => {
+      // Invalidate the specific folder query where the folder was deleted from
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/files", result.groupId, result.parentId] 
+      });
       toast({
         title: "Folder deleted",
         description: "The folder has been deleted successfully",
@@ -158,12 +176,16 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const renameFileMutation = useMutation({
-    mutationFn: async ({ fileId, name }: { fileId: number, name: string }) => {
+    mutationFn: async ({ fileId, name, groupId: fileGroupId, parentId: fileParentId }: 
+      { fileId: number, name: string, groupId: number | null, parentId: number | null }) => {
       const res = await apiRequest("PATCH", `/api/files/${fileId}`, { name });
-      return res.json();
+      return { result: await res.json(), groupId: fileGroupId, parentId: fileParentId };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", groupId, parentId] });
+    onSuccess: (data) => {
+      // Invalidate the specific folder query where the file was renamed
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/files", data.groupId, data.parentId] 
+      });
       toast({
         title: "File renamed",
         description: "The file has been renamed successfully",
@@ -179,12 +201,16 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const renameFolderMutation = useMutation({
-    mutationFn: async ({ folderId, name }: { folderId: number, name: string }) => {
+    mutationFn: async ({ folderId, name, groupId: folderGroupId, parentId: folderParentId }: 
+      { folderId: number, name: string, groupId: number | null, parentId: number | null }) => {
       const res = await apiRequest("PATCH", `/api/folders/${folderId}`, { name });
-      return res.json();
+      return { result: await res.json(), groupId: folderGroupId, parentId: folderParentId };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", groupId, parentId] });
+    onSuccess: (data) => {
+      // Invalidate the specific folder query where the folder was renamed
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/files", data.groupId, data.parentId] 
+      });
       toast({
         title: "Folder renamed",
         description: "The folder has been renamed successfully",
@@ -199,15 +225,28 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
     },
   });
 
+  // Create wrapped functions to ensure groupId and parentId are always included
+  const deleteFile = (fileId: number) => 
+    deleteFileMutation.mutate({ fileId, groupId, parentId });
+    
+  const deleteFolder = (folderId: number) => 
+    deleteFolderMutation.mutate({ folderId, groupId, parentId });
+    
+  const renameFile = (fileId: number, name: string) => 
+    renameFileMutation.mutate({ fileId, name, groupId, parentId });
+    
+  const renameFolder = (folderId: number, name: string) => 
+    renameFolderMutation.mutate({ folderId, name, groupId, parentId });
+  
   return {
     filesData: filesQuery.data,
     isLoading: filesQuery.isLoading,
     error: filesQuery.error,
     createFolder: createFolderMutation.mutate,
     uploadFile: uploadFileMutation.mutate,
-    deleteFile: deleteFileMutation.mutate,
-    deleteFolder: deleteFolderMutation.mutate,
-    renameFile: renameFileMutation.mutate,
-    renameFolder: renameFolderMutation.mutate,
+    deleteFile,
+    deleteFolder,
+    renameFile,
+    renameFolder,
   };
 }
