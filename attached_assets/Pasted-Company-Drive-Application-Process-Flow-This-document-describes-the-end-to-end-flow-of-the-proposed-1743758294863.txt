@@ -1,0 +1,348 @@
+Company Drive Application - Process Flow
+This document describes the end-to-end flow of the proposed company drive application, integrating the user interface interactions with the backend logic involving users, groups, and permissions.
+Phase 1: Initial Access & Authentication
+New User Signup:
+Frontend: A potential user accesses the Signup page and enters their Name, Email, and Password.
+Backend: Receives the signup request.
+Validates the data (e.g., email format).
+Checks if the email already exists in the Users table. If yes, return an error.
+Securely hashes the provided password.
+Inserts a new record into the Users table with the provided Name, Email, hashed Password, and sets the Role to 'User' by default.
+Frontend: Displays a success message and prompts the user to log in.
+User Login:
+Frontend: A user accesses the Login page and enters their Email and Password.
+Backend: Receives the login request.
+Finds the user record in the Users table matching the provided Email.
+If found, compares the hashed version of the provided password with the PasswordHash stored in the database.
+If passwords match, authentication is successful. The backend retrieves the user's UserID, Name, and Role.
+Generates an authentication token (e.g., JWT) containing user identifiers and role information.
+Sends the user details (excluding password) and the token back to the frontend.
+If email not found or password doesn't match, return an authentication error.
+Frontend: Receives the user data and token.
+Stores the token securely (e.g., in localStorage or sessionStorage).
+Updates the application's state to indicate the user is logged in (storing user Name and Role).
+Redirects the user to their main dashboard/drive view.
+Phase 2: User Interaction with the Drive
+Loading the Main Drive View:
+Frontend: After login, the main drive component mounts. It needs to display accessible files and folders. It sends a request to the backend for the initial data, including the authentication token in the request headers.
+Backend: Receives the request.
+Validates the authentication token. Extracts the UserID.
+Queries the GroupMemberships table to find all GroupIDs the UserID belongs to.
+Queries the file/folder storage system (representing the drive's content, likely another set of tables like Files or Folders linked via GroupID and potentially ParentID for hierarchy). Filters these items based on the list of accessible GroupIDs obtained earlier. It might initially fetch only top-level items within accessible groups.
+Also retrieves the specific Permission ('View Only' or 'View & Edit') for the user within each relevant group from GroupMemberships.
+Sends the list of accessible files/folders, along with the user's permission for the corresponding group, back to the frontend.
+Frontend: Receives the list of files/folders and associated permissions.
+Renders the items in the UI (e.g., as icons or a list).
+Uses the permission information to conditionally enable/disable action buttons (like Edit, Delete, Upload) for each item or group context.
+Navigating Folders:
+Frontend: User clicks on a folder. The frontend sends a request to the backend for the contents of that specific folder, including the auth token and the folder's ID.
+Backend: Receives the request.
+Validates the token. Extracts UserID.
+Determines the GroupID associated with the requested folder.
+Checks GroupMemberships to confirm the user is actually a member of that GroupID. If not, return an authorization error.
+Queries the file/folder storage for items where ParentID matches the requested folder's ID.
+Sends the list of items within that folder back to the frontend (again, potentially including permission context if needed, though the overall group permission usually applies).
+Frontend: Receives the folder contents and renders them, replacing the previous view.
+Performing Actions (Edit, Delete, Upload):
+Frontend: User clicks an action button (e.g., "Delete" on a file). The button might already be disabled if the user only has 'View Only' permission for that item's group. If enabled, the frontend sends a request to the backend specifying the action, the item ID, and the auth token. For uploads, it sends the file data and the target folder/group ID.
+Backend: Receives the action request.
+Validates the token. Extracts UserID.
+Identifies the item (file/folder) and its associated GroupID.
+Queries GroupMemberships to get the specific permission for this UserID in this GroupID.
+Authorization Check: Compares the required permission for the action (e.g., 'Delete' requires 'View & Edit') against the user's retrieved permission.
+If permission is sufficient: Performs the action (e.g., updates database record, deletes file, saves uploaded file associated with the correct GroupID and ParentID). Sends a success response.
+If permission is insufficient: Sends an authorization error response.
+Frontend: Receives the response.
+On success: Updates the UI (e.g., removes the deleted item, adds the uploaded item, shows a success notification).
+On error: Displays an informative error message (e.g., "Permission Denied").
+Phase 3: Admin & SuperAdmin Functions
+Accessing Admin Panel:
+Frontend: If the logged-in user's Role (stored in the app state) is 'Admin' or 'SuperAdmin', display links/buttons to access administrative sections (e.g., "User Management", "Group Management").
+Backend: (No direct interaction for just viewing the link, but backend endpoints for admin actions will validate the role).
+Managing Users:
+Frontend: Admin navigates to "User Management". Sends request for user list (with auth token).
+Backend: Validates token, checks if Role is 'Admin' or 'SuperAdmin'. If yes, queries the Users table (excluding sensitive data like passwords) and sends the list back.
+Frontend: Displays the user list. Allows Admins to view details. Allows SuperAdmins to change a user's Role (e.g., promote to 'Admin'). If role change is triggered, sends update request.
+Backend: Receives role update request. Validates token, checks if requester is 'SuperAdmin'. If yes, updates the target user's Role in the Users table. Sends success/error response.
+Frontend: Updates UI on success or shows error.
+Managing Groups & Memberships:
+Frontend: Admin navigates to "Group Management". Sends request for group list.
+Backend: Validates token, checks 'Admin'/'SuperAdmin' role. Queries Groups table and sends list back.
+Frontend: Displays group list. Allows Admins to create new groups (sends create request) or select a group to manage members.
+Backend: Handles group creation request (validates role, inserts into Groups).
+Frontend: When managing members for a selected group: Sends request for current members and potential users to add.
+Backend: Validates role. Queries GroupMemberships for current members (joining with Users for names). Queries Users for users not currently in the group. Sends both lists back.
+Frontend: Displays current members with their permissions. Shows a list/search bar to add new users. Admin selects a user, assigns a permission ('View Only' or 'View & Edit'), and clicks "Add". Sends add member request. Admin can also remove existing members (sends remove request).
+Backend: Handles add/remove member requests: Validates role. Inserts/Deletes records in the GroupMemberships table accordingly. Sends success/error response.
+Frontend: Updates the displayed member list on success.
+Phase 4: Logout
+User Logout:
+Frontend: User clicks the Logout button.
+Frontend: Clears the stored authentication token and user state from the application. Redirects the user to the Login page.
+Backend: (Optional) If using server-side sessions or token blacklisting, the backend might receive a logout request to invalidate the token/session.
+Supporting Diagram (Backend Data Flow - Conceptual)
+graph TD
+    subgraph "User Actions"
+        U_SignUp[User Signs Up] --> BE_CreateUser{Backend: Validate & Create User Record};
+        U_Login[User Logs In] --> BE_AuthUser{Backend: Authenticate User};
+        U_AccessData[User Accesses Group Data] --> BE_CheckMembership{Backend: Check GroupMemberships};
+        U_EditData[User Tries to Edit Group Data] --> BE_CheckPermission{Backend: Check Group Permission};
+    end
+
+    subgraph "Admin/SuperAdmin Actions"
+        SA_Login[Admin/SA Logs In] --> BE_AuthUser;
+        SA_CreateGroup[Admin/SA Creates Group] --> BE_CreateGroupRec{Backend: Create Group Record};
+        SA_AddUser[Admin/SA Adds User to Group] --> BE_SuggestUsers{Backend: Suggest Users from Users Table};
+        BE_SuggestUsers --> SA_SelectUserPerm[Admin/SA Selects User & Permission];
+        SA_SelectUserPerm --> BE_CreateMembership{Backend: Create GroupMembership Record};
+        SA_ViewUsers[Admin/SA Views All Users] --> DB_Users[(Users Table)];
+        SA_ViewGroups[Admin/SA Views All Groups] --> DB_Groups[(Groups Table)];
+        SA_CreateAdmin[SuperAdmin Creates Admin] --> BE_UpdateRole{Backend: Update User Role};
+    end
+
+    subgraph "Backend Processing & Database"
+        BE_CreateUser --> DB_Users[(Users Table)];
+        BE_AuthUser --> DB_Users;
+        BE_CreateGroupRec --> DB_Groups[(Groups Table)];
+        BE_SuggestUsers --> DB_Users;
+        BE_CreateMembership --> DB_GroupMemberships[(GroupMemberships Table)];
+        BE_UpdateRole --> DB_Users;
+
+        BE_CheckMembership --> DB_GroupMemberships;
+        DB_GroupMemberships -- User's GroupIDs --> BE_FetchGroupData{Backend: Fetch Data for User's Groups};
+        %% Assuming a GroupData/Files table exists linked by GroupID
+        BE_FetchGroupData -- Filtered Data --> U_AccessData;
+
+
+        BE_CheckPermission --> DB_GroupMemberships;
+        DB_GroupMemberships -- Specific Permission --> BE_AllowDeny{Backend: Allow/Deny Action};
+        BE_AllowDeny -- Allowed --> U_EditData; %% Action proceeds
+        BE_AllowDeny -- Denied --> U_EditData; %% Action blocked
+    end
+
+    %% Database Relationships (Implied Foreign Keys)
+    DB_GroupMemberships -- References --> DB_Users;
+    DB_GroupMemberships -- References --> DB_Groups;
+    DB_Groups -- References --> DB_Users; %% CreatedByUserID
+    DB_GroupMemberships -- References --> DB_Users; %% AddedByUserID
+
+    style DB_Users fill:#lightblue,stroke:#333,stroke-width:2px
+    style DB_Groups fill:#lightgreen,stroke:#333,stroke-width:2px
+    style DB_GroupMemberships fill:#lightcoral,stroke:#333,stroke-width:2px
+
+This flow covers the essential interactions and logic, demonstrating how the frontend UI connects with the backend rules defined by the user, group, and permission tables.
+Company Drive Application - Process Flow
+This document describes the end-to-end flow of the proposed company drive application, integrating the user interface interactions with the backend logic involving users, groups, and permissions.
+
+Phase 1: Initial Access & Authentication
+
+New User Signup:
+
+Frontend: A potential user accesses the Signup page and enters their Name, Email, and Password.
+
+Backend: Receives the signup request.
+
+Validates the data (e.g., email format).
+
+Checks if the email already exists in the Users table. If yes, return an error.
+
+Securely hashes the provided password.
+
+Inserts a new record into the Users table with the provided Name, Email, hashed Password, and sets the Role to 'User' by default.
+
+Frontend: Displays a success message and prompts the user to log in.
+
+User Login:
+
+Frontend: A user accesses the Login page and enters their Email and Password.
+
+Backend: Receives the login request.
+
+Finds the user record in the Users table matching the provided Email.
+
+If found, compares the hashed version of the provided password with the PasswordHash stored in the database.
+
+If passwords match, authentication is successful. The backend retrieves the user's UserID, Name, and Role.
+
+Generates an authentication token (e.g., JWT) containing user identifiers and role information.
+
+Sends the user details (excluding password) and the token back to the frontend.
+
+If email not found or password doesn't match, return an authentication error.
+
+Frontend: Receives the user data and token.
+
+Stores the token securely (e.g., in localStorage or sessionStorage).
+
+Updates the application's state to indicate the user is logged in (storing user Name and Role).
+
+Redirects the user to their main dashboard/drive view.
+
+Phase 2: User Interaction with the Drive
+
+Loading the Main Drive View:
+
+Frontend: After login, the main drive component mounts. It needs to display accessible files and folders. It sends a request to the backend for the initial data, including the authentication token in the request headers.
+
+Backend: Receives the request.
+
+Validates the authentication token. Extracts the UserID.
+
+Queries the GroupMemberships table to find all GroupIDs the UserID belongs to.
+
+Queries the file/folder storage system (representing the drive's content, likely another set of tables like Files or Folders linked via GroupID and potentially ParentID for hierarchy). Filters these items based on the list of accessible GroupIDs obtained earlier. It might initially fetch only top-level items within accessible groups.
+
+Also retrieves the specific Permission ('View Only' or 'View & Edit') for the user within each relevant group from GroupMemberships.
+
+Sends the list of accessible files/folders, along with the user's permission for the corresponding group, back to the frontend.
+
+Frontend: Receives the list of files/folders and associated permissions.
+
+Renders the items in the UI (e.g., as icons or a list).
+
+Uses the permission information to conditionally enable/disable action buttons (like Edit, Delete, Upload) for each item or group context.
+
+Navigating Folders:
+
+Frontend: User clicks on a folder. The frontend sends a request to the backend for the contents of that specific folder, including the auth token and the folder's ID.
+
+Backend: Receives the request.
+
+Validates the token. Extracts UserID.
+
+Determines the GroupID associated with the requested folder.
+
+Checks GroupMemberships to confirm the user is actually a member of that GroupID. If not, return an authorization error.
+
+Queries the file/folder storage for items where ParentID matches the requested folder's ID.
+
+Sends the list of items within that folder back to the frontend (again, potentially including permission context if needed, though the overall group permission usually applies).
+
+Frontend: Receives the folder contents and renders them, replacing the previous view.
+
+Performing Actions (Edit, Delete, Upload):
+
+Frontend: User clicks an action button (e.g., "Delete" on a file). The button might already be disabled if the user only has 'View Only' permission for that item's group. If enabled, the frontend sends a request to the backend specifying the action, the item ID, and the auth token. For uploads, it sends the file data and the target folder/group ID.
+
+Backend: Receives the action request.
+
+Validates the token. Extracts UserID.
+
+Identifies the item (file/folder) and its associated GroupID.
+
+Queries GroupMemberships to get the specific permission for this UserID in this GroupID.
+
+Authorization Check: Compares the required permission for the action (e.g., 'Delete' requires 'View & Edit') against the user's retrieved permission.
+
+If permission is sufficient: Performs the action (e.g., updates database record, deletes file, saves uploaded file associated with the correct GroupID and ParentID). Sends a success response.
+
+If permission is insufficient: Sends an authorization error response.
+
+Frontend: Receives the response.
+
+On success: Updates the UI (e.g., removes the deleted item, adds the uploaded item, shows a success notification).
+
+On error: Displays an informative error message (e.g., "Permission Denied").
+
+Phase 3: Admin & SuperAdmin Functions
+
+Accessing Admin Panel:
+
+Frontend: If the logged-in user's Role (stored in the app state) is 'Admin' or 'SuperAdmin', display links/buttons to access administrative sections (e.g., "User Management", "Group Management").
+
+Backend: (No direct interaction for just viewing the link, but backend endpoints for admin actions will validate the role).
+
+Managing Users:
+
+Frontend: Admin navigates to "User Management". Sends request for user list (with auth token).
+
+Backend: Validates token, checks if Role is 'Admin' or 'SuperAdmin'. If yes, queries the Users table (excluding sensitive data like passwords) and sends the list back.
+
+Frontend: Displays the user list. Allows Admins to view details. Allows SuperAdmins to change a user's Role (e.g., promote to 'Admin'). If role change is triggered, sends update request.
+
+Backend: Receives role update request. Validates token, checks if requester is 'SuperAdmin'. If yes, updates the target user's Role in the Users table. Sends success/error response.
+
+Frontend: Updates UI on success or shows error.
+
+Managing Groups & Memberships:
+
+Frontend: Admin navigates to "Group Management". Sends request for group list.
+
+Backend: Validates token, checks 'Admin'/'SuperAdmin' role. Queries Groups table and sends list back.
+
+Frontend: Displays group list. Allows Admins to create new groups (sends create request) or select a group to manage members.
+
+Backend: Handles group creation request (validates role, inserts into Groups).
+
+Frontend: When managing members for a selected group: Sends request for current members and potential users to add.
+
+Backend: Validates role. Queries GroupMemberships for current members (joining with Users for names). Queries Users for users not currently in the group. Sends both lists back.
+
+Frontend: Displays current members with their permissions. Shows a list/search bar to add new users. Admin selects a user, assigns a permission ('View Only' or 'View & Edit'), and clicks "Add". Sends add member request. Admin can also remove existing members (sends remove request).
+
+Backend: Handles add/remove member requests: Validates role. Inserts/Deletes records in the GroupMemberships table accordingly. Sends success/error response.
+
+Frontend: Updates the displayed member list on success.
+
+Phase 4: Logout
+
+User Logout:
+
+Frontend: User clicks the Logout button.
+
+Frontend: Clears the stored authentication token and user state from the application. Redirects the user to the Login page.
+
+Backend: (Optional) If using server-side sessions or token blacklisting, the backend might receive a logout request to invalidate the token/session.
+
+Supporting Diagram (Backend Data Flow - Conceptual)
+
+graph TD
+    subgraph "User Actions"
+        U_SignUp[User Signs Up] --> BE_CreateUser{Backend: Validate & Create User Record};
+        U_Login[User Logs In] --> BE_AuthUser{Backend: Authenticate User};
+        U_AccessData[User Accesses Group Data] --> BE_CheckMembership{Backend: Check GroupMemberships};
+        U_EditData[User Tries to Edit Group Data] --> BE_CheckPermission{Backend: Check Group Permission};
+    end
+
+    subgraph "Admin/SuperAdmin Actions"
+        SA_Login[Admin/SA Logs In] --> BE_AuthUser;
+        SA_CreateGroup[Admin/SA Creates Group] --> BE_CreateGroupRec{Backend: Create Group Record};
+        SA_AddUser[Admin/SA Adds User to Group] --> BE_SuggestUsers{Backend: Suggest Users from Users Table};
+        BE_SuggestUsers --> SA_SelectUserPerm[Admin/SA Selects User & Permission];
+        SA_SelectUserPerm --> BE_CreateMembership{Backend: Create GroupMembership Record};
+        SA_ViewUsers[Admin/SA Views All Users] --> DB_Users[(Users Table)];
+        SA_ViewGroups[Admin/SA Views All Groups] --> DB_Groups[(Groups Table)];
+        SA_CreateAdmin[SuperAdmin Creates Admin] --> BE_UpdateRole{Backend: Update User Role};
+    end
+
+    subgraph "Backend Processing & Database"
+        BE_CreateUser --> DB_Users[(Users Table)];
+        BE_AuthUser --> DB_Users;
+        BE_CreateGroupRec --> DB_Groups[(Groups Table)];
+        BE_SuggestUsers --> DB_Users;
+        BE_CreateMembership --> DB_GroupMemberships[(GroupMemberships Table)];
+        BE_UpdateRole --> DB_Users;
+
+        BE_CheckMembership --> DB_GroupMemberships;
+        DB_GroupMemberships -- User's GroupIDs --> BE_FetchGroupData{Backend: Fetch Data for User's Groups};
+        %% Assuming a GroupData/Files table exists linked by GroupID
+        BE_FetchGroupData -- Filtered Data --> U_AccessData;
+
+
+        BE_CheckPermission --> DB_GroupMemberships;
+        DB_GroupMemberships -- Specific Permission --> BE_AllowDeny{Backend: Allow/Deny Action};
+        BE_AllowDeny -- Allowed --> U_EditData; %% Action proceeds
+        BE_AllowDeny -- Denied --> U_EditData; %% Action blocked
+    end
+
+    %% Database Relationships (Implied Foreign Keys)
+    DB_GroupMemberships -- References --> DB_Users;
+    DB_GroupMemberships -- References --> DB_Groups;
+    DB_Groups -- References --> DB_Users; %% CreatedByUserID
+    DB_GroupMemberships -- References --> DB_Users; %% AddedByUserID
+
+    style DB_Users fill:#lightblue,stroke:#333,stroke-width:2px
+    style DB_Groups fill:#lightgreen,stroke:#333,stroke-width:2px
+    style DB_GroupMemberships fill:#lightcoral,stroke:#333,stroke-width:2px
+
+This flow covers the essential interactions and logic, demonstrating how the frontend UI connects with the backend rules defined by the user, group, and permission tables.

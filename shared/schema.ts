@@ -62,6 +62,8 @@ export const files = pgTable("files", {
   uploadedById: integer("uploaded_by_id").references(() => users.id),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  isPublic: boolean("is_public").default(false),
+  publicToken: text("public_token"),
 });
 
 // Insert schemas
@@ -143,6 +145,48 @@ export const groupRelations = {
     relation: "one-to-many",
   },
 };
+
+// File shares table
+export const fileShares = pgTable("file_shares", {
+  id: serial("id").primaryKey(),
+  fileId: integer("file_id").notNull().references(() => files.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  permission: text("permission", { enum: ["View", "Edit"] }).notNull().default("View"),
+  sharedById: integer("shared_by_id").notNull().references(() => users.id),
+  sharedAt: timestamp("shared_at").defaultNow(),
+});
+
+// Folder shares table
+export const folderShares = pgTable("folder_shares", {
+  id: serial("id").primaryKey(),
+  folderId: integer("folder_id").notNull().references(() => folders.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  permission: text("permission", { enum: ["View", "Edit"] }).notNull().default("View"),
+  sharedById: integer("shared_by_id").notNull().references(() => users.id),
+  sharedAt: timestamp("shared_at").defaultNow(),
+});
+
+// Insert schemas for shares
+export const insertFileShareSchema = createInsertSchema(fileShares).pick({
+  fileId: true,
+  userId: true,
+  permission: true,
+  sharedById: true,
+});
+
+export const insertFolderShareSchema = createInsertSchema(folderShares).pick({
+  folderId: true,
+  userId: true,
+  permission: true,
+  sharedById: true,
+});
+
+// Type definitions for shares
+export type InsertFileShare = z.infer<typeof insertFileShareSchema>;
+export type FileShare = typeof fileShares.$inferSelect;
+
+export type InsertFolderShare = z.infer<typeof insertFolderShareSchema>;
+export type FolderShare = typeof folderShares.$inferSelect;
 
 // Folder relations including self-reference to handle parent/child structure
 export const folderRelations = {

@@ -4,8 +4,11 @@ import {
   groupMemberships, type GroupMembership, type InsertGroupMembership,
   files, type File, type InsertFile,
   folders, type Folder, type InsertFolder, 
+  fileShares, type FileShare, type InsertFileShare,
+  folderShares, type FolderShare, type InsertFolderShare,
   type Permission
 } from "@shared/schema";
+import crypto from "crypto";
 import { db, pool } from "./db";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import session from "express-session";
@@ -47,6 +50,21 @@ export interface IStorage {
   getFoldersByParent(parentId: number | null, groupId: number): Promise<Folder[]>;
   updateFolder(id: number, name: string): Promise<Folder | undefined>;
   deleteFolder(id: number): Promise<boolean>;
+  
+  // File share methods
+  getFileShares(fileId: number): Promise<(FileShare & { user: Partial<User> })[]>;
+  addFileShare(fileId: number, userId: number, permission: Permission, sharedById: number): Promise<FileShare | undefined>;
+  updateFileShare(fileId: number, userId: number, permission: Permission): Promise<FileShare | undefined>;
+  removeFileShare(fileId: number, userId: number): Promise<boolean>;
+  
+  // Folder share methods
+  getFolderShares(folderId: number): Promise<(FolderShare & { user: Partial<User> })[]>;
+  addFolderShare(folderId: number, userId: number, permission: Permission, sharedById: number): Promise<FolderShare | undefined>;
+  updateFolderShare(folderId: number, userId: number, permission: Permission): Promise<FolderShare | undefined>;
+  removeFolderShare(folderId: number, userId: number): Promise<boolean>;
+  
+  // Public access methods
+  setFilePublicAccess(fileId: number, isPublic: boolean, token?: string): Promise<File | undefined>;
   
   // Session store
   sessionStore: any; // Using any to avoid SessionStore typing issues
@@ -304,6 +322,165 @@ export class DatabaseStorage implements IStorage {
   async deleteFolder(id: number): Promise<boolean> {
     await db.delete(folders).where(eq(folders.id, id));
     return true;
+  }
+  
+  // File share methods
+  async getFileShares(fileId: number): Promise<(FileShare & { user: Partial<User> })[]> {
+    try {
+      const result = await db.select({
+        id: fileShares.id,
+        fileId: fileShares.fileId,
+        userId: fileShares.userId,
+        permission: fileShares.permission,
+        sharedById: fileShares.sharedById,
+        sharedAt: fileShares.sharedAt,
+        user: {
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          role: users.role,
+        }
+      })
+      .from(fileShares)
+      .innerJoin(users, eq(fileShares.userId, users.id))
+      .where(eq(fileShares.fileId, fileId));
+      
+      return result;
+    } catch (error) {
+      console.error("Error getting file shares:", error);
+      return [];
+    }
+  }
+  
+  async addFileShare(fileId: number, userId: number, permission: Permission, sharedById: number): Promise<FileShare | undefined> {
+    try {
+      const [share] = await db.insert(fileShares)
+        .values({ fileId, userId, permission, sharedById })
+        .returning();
+      return share;
+    } catch (error) {
+      console.error("Error adding file share:", error);
+      return undefined;
+    }
+  }
+  
+  async updateFileShare(fileId: number, userId: number, permission: Permission): Promise<FileShare | undefined> {
+    try {
+      const [share] = await db.update(fileShares)
+        .set({ permission })
+        .where(and(
+          eq(fileShares.fileId, fileId),
+          eq(fileShares.userId, userId)
+        ))
+        .returning();
+      return share;
+    } catch (error) {
+      console.error("Error updating file share:", error);
+      return undefined;
+    }
+  }
+  
+  async removeFileShare(fileId: number, userId: number): Promise<boolean> {
+    try {
+      const result = await db.delete(fileShares)
+        .where(and(
+          eq(fileShares.fileId, fileId),
+          eq(fileShares.userId, userId)
+        ))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error removing file share:", error);
+      return false;
+    }
+  }
+  
+  // Folder share methods
+  async getFolderShares(folderId: number): Promise<(FolderShare & { user: Partial<User> })[]> {
+    try {
+      const result = await db.select({
+        id: folderShares.id,
+        folderId: folderShares.folderId,
+        userId: folderShares.userId,
+        permission: folderShares.permission,
+        sharedById: folderShares.sharedById,
+        sharedAt: folderShares.sharedAt,
+        user: {
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          role: users.role,
+        }
+      })
+      .from(folderShares)
+      .innerJoin(users, eq(folderShares.userId, users.id))
+      .where(eq(folderShares.folderId, folderId));
+      
+      return result;
+    } catch (error) {
+      console.error("Error getting folder shares:", error);
+      return [];
+    }
+  }
+  
+  async addFolderShare(folderId: number, userId: number, permission: Permission, sharedById: number): Promise<FolderShare | undefined> {
+    try {
+      const [share] = await db.insert(folderShares)
+        .values({ folderId, userId, permission, sharedById })
+        .returning();
+      return share;
+    } catch (error) {
+      console.error("Error adding folder share:", error);
+      return undefined;
+    }
+  }
+  
+  async updateFolderShare(folderId: number, userId: number, permission: Permission): Promise<FolderShare | undefined> {
+    try {
+      const [share] = await db.update(folderShares)
+        .set({ permission })
+        .where(and(
+          eq(folderShares.folderId, folderId),
+          eq(folderShares.userId, userId)
+        ))
+        .returning();
+      return share;
+    } catch (error) {
+      console.error("Error updating folder share:", error);
+      return undefined;
+    }
+  }
+  
+  async removeFolderShare(folderId: number, userId: number): Promise<boolean> {
+    try {
+      const result = await db.delete(folderShares)
+        .where(and(
+          eq(folderShares.folderId, folderId),
+          eq(folderShares.userId, userId)
+        ))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error removing folder share:", error);
+      return false;
+    }
+  }
+  
+  // Public access methods
+  async setFilePublicAccess(fileId: number, isPublic: boolean, token?: string): Promise<File | undefined> {
+    try {
+      const [file] = await db.update(files)
+        .set({ 
+          isPublic, 
+          publicToken: isPublic ? (token || crypto.randomBytes(16).toString('hex')) : null 
+        })
+        .where(eq(files.id, fileId))
+        .returning();
+      return file;
+    } catch (error) {
+      console.error("Error setting file public access:", error);
+      return undefined;
+    }
   }
 }
 

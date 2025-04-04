@@ -1,6 +1,6 @@
 import { useState, createContext, useContext, ReactNode } from 'react';
 
-type ModalName = 'fileAction' | 'groupManagement' | 'fileUpload';
+type ModalName = 'fileAction' | 'groupManagement' | 'fileUpload' | 'fileShare';
 
 type ModalContextType = {
   activeModal: ModalName | null;

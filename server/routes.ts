@@ -5,6 +5,7 @@ import { setupAuth } from "./auth";
 import { setupFileRoutes } from "./fileRoutes";
 import { setupGroupRoutes } from "./groupRoutes";
 import { setupAdminRoutes } from "./adminRoutes";
+import { setupShareRoutes } from "./shareRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes
@@ -18,6 +19,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Set up admin routes
   setupAdminRoutes(app);
+  
+  // Set up sharing routes
+  setupShareRoutes(app);
 
   const httpServer = createServer(app);
 

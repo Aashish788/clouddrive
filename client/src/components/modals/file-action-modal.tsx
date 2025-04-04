@@ -22,7 +22,7 @@ import { formatDistanceToNow } from "date-fns";
 import { formatBytes } from "@/lib/utils";
 
 export function FileActionModal() {
-  const { activeModal, modalData, closeModal } = useModal();
+  const { activeModal, modalData, closeModal, openModal } = useModal();
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState("");
   
@@ -150,7 +150,10 @@ export function FileActionModal() {
             <Button 
               variant="ghost" 
               className="justify-start px-3 py-2 w-full"
-              disabled={permission !== "Edit"}
+              onClick={() => {
+                closeModal();
+                openModal('fileShare', { file: item, isFolder, permission });
+              }}
             >
               <Share className="h-5 w-5 mr-3 text-gray-500" />
               <span>Share</span>
