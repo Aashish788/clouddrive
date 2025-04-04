@@ -7,6 +7,7 @@ import { useFiles } from "@/hooks/use-files";
 import { useGroup } from "@/hooks/use-group";
 import { useModal } from "@/hooks/use-modal";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Upload, MoreVertical } from "lucide-react";
 import { CreateFolderDialog } from "@/components/create-folder-dialog";
 import {
@@ -20,6 +21,7 @@ import {
 export default function GroupPage() {
   const [_, setLocation] = useLocation();
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const { toast } = useToast();
   
   // Handle group route
   const [matchesGroupRoute, groupParams] = useRoute<{ groupId: string }>("/group/:groupId");
@@ -41,9 +43,21 @@ export default function GroupPage() {
   }
   
   // Only call useGroup if groupId is valid
-  const { groupDetails, isLoading: isGroupLoading, updateGroup } = useGroup(groupId || 0);
+  const { groupDetails, isLoading: isGroupLoading, error: groupError, updateGroup } = useGroup(groupId || 0);
   const { openModal } = useModal();
   const { user } = useAuth();
+  
+  // Redirect if there's an error accessing the group
+  useEffect(() => {
+    if (groupError) {
+      toast({
+        title: "Access Denied",
+        description: "You don't have access to this group",
+        variant: "destructive",
+      });
+      setLocation("/");
+    }
+  }, [groupError, toast, setLocation]);
   
   // Check if user is an admin or superadmin
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";

@@ -1,6 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+import { useEffect } from "react";
 
 // Define the Group type
 export type Group = {
@@ -71,11 +73,25 @@ export function useGroups() {
 
 export function useGroup(groupId: number) {
   const { toast } = useToast();
+  const [_, setLocation] = useLocation();
 
   const groupQuery = useQuery<GroupDetails>({
     queryKey: [`/api/groups/${groupId}`],
     enabled: Boolean(groupId),
+    retry: false // Don't retry failed requests
   });
+  
+  // Handle errors with useEffect to avoid re-renders
+  useEffect(() => {
+    if (groupQuery.error) {
+      toast({
+        title: "Access Denied",
+        description: "You don't have access to this group",
+        variant: "destructive",
+      });
+      setLocation("/");
+    }
+  }, [groupQuery.error, toast, setLocation]);
 
   const addUserMutation = useMutation({
     mutationFn: async ({ userId, permission }: { userId: number, permission: "View" | "Edit" }) => {
