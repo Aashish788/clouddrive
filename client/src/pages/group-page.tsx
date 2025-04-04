@@ -47,7 +47,7 @@ export default function GroupPage() {
   const { openModal } = useModal();
   const { user } = useAuth();
   
-  // Redirect if there's an error accessing the group
+  // Redirect if there's an error accessing the group or response is 403
   useEffect(() => {
     if (groupError) {
       toast({

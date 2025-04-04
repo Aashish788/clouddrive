@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
@@ -78,7 +78,8 @@ export function useGroup(groupId: number) {
   const groupQuery = useQuery<GroupDetails>({
     queryKey: [`/api/groups/${groupId}`],
     enabled: Boolean(groupId),
-    retry: false // Don't retry failed requests
+    retry: false, // Don't retry failed requests
+    queryFn: getQueryFn({ on401: "throw", on403: "throw" }) // Force 403 errors to throw
   });
   
   // Handle errors with useEffect to avoid re-renders
