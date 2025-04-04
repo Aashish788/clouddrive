@@ -48,17 +48,11 @@ export function setupGroupRoutes(app: Express) {
     }
   });
   
-  // Create a new group
+  // Create a new group - any authenticated user can create groups
   app.post("/api/groups", async (req, res, next) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      // Only admins can create groups
-      const user = req.user as User;
-      if (user.role !== "Admin" && user.role !== "SuperAdmin") {
-        return res.status(403).json({ message: "Admin access required to create groups" });
       }
       
       // Validate input
@@ -68,6 +62,7 @@ export function setupGroupRoutes(app: Express) {
       }
       
       const { name } = result.data;
+      const user = req.user as User;
       
       // Create the group
       const newGroup = await storage.createGroup({
@@ -185,13 +180,24 @@ export function setupGroupRoutes(app: Express) {
     }
   });
   
-  // Add a user to a group (admin only)
-  app.post("/api/groups/:id/members", requireAdmin, async (req, res, next) => {
+  // Add a user to a group (requires Edit permission or admin role)
+  app.post("/api/groups/:id/members", async (req, res, next) => {
     try {
-      const groupId = Number(req.params.id);
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
       
+      const groupId = Number(req.params.id);
       if (isNaN(groupId)) {
         return res.status(400).json({ message: "Invalid group ID" });
+      }
+      
+      // Check if user has edit permission or is an admin
+      const currentUser = req.user as User;
+      const userPermission = await storage.getUserPermissionForGroup(currentUser.id, groupId);
+      
+      if (!(userPermission === "Edit" || currentUser.role === "Admin" || currentUser.role === "SuperAdmin")) {
+        return res.status(403).json({ message: "Edit permission required to add users" });
       }
       
       // Validate input
@@ -208,9 +214,9 @@ export function setupGroupRoutes(app: Express) {
         return res.status(404).json({ message: "Group not found" });
       }
       
-      // Get the user
-      const user = await storage.getUser(userId);
-      if (!user) {
+      // Get the user to add
+      const userToAdd = await storage.getUser(userId);
+      if (!userToAdd) {
         return res.status(404).json({ message: "User not found" });
       }
       
@@ -234,14 +240,26 @@ export function setupGroupRoutes(app: Express) {
     }
   });
   
-  // Update a user's permission in a group (admin only)
-  app.patch("/api/groups/:groupId/members/:userId", requireAdmin, async (req, res, next) => {
+  // Update a user's permission in a group (requires Edit permission or admin role)
+  app.patch("/api/groups/:groupId/members/:userId", async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
       const groupId = Number(req.params.groupId);
       const userId = Number(req.params.userId);
       
       if (isNaN(groupId) || isNaN(userId)) {
         return res.status(400).json({ message: "Invalid group ID or user ID" });
+      }
+      
+      // Check if user has edit permission or is an admin
+      const currentUser = req.user as User;
+      const userPermission = await storage.getUserPermissionForGroup(currentUser.id, groupId);
+      
+      if (!(userPermission === "Edit" || currentUser.role === "Admin" || currentUser.role === "SuperAdmin")) {
+        return res.status(403).json({ message: "Edit permission required to update user permissions" });
       }
       
       // Validate input
@@ -276,14 +294,26 @@ export function setupGroupRoutes(app: Express) {
     }
   });
   
-  // Remove a user from a group (admin only)
-  app.delete("/api/groups/:groupId/members/:userId", requireAdmin, async (req, res, next) => {
+  // Remove a user from a group (requires Edit permission or admin role)
+  app.delete("/api/groups/:groupId/members/:userId", async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
       const groupId = Number(req.params.groupId);
       const userId = Number(req.params.userId);
       
       if (isNaN(groupId) || isNaN(userId)) {
         return res.status(400).json({ message: "Invalid group ID or user ID" });
+      }
+      
+      // Check if user has edit permission or is an admin
+      const currentUser = req.user as User;
+      const userPermission = await storage.getUserPermissionForGroup(currentUser.id, groupId);
+      
+      if (!(userPermission === "Edit" || currentUser.role === "Admin" || currentUser.role === "SuperAdmin")) {
+        return res.status(403).json({ message: "Edit permission required to remove users" });
       }
       
       // Get the group
