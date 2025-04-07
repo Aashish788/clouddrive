@@ -1,3 +1,4 @@
+
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +28,7 @@ export type GroupMembership = {
     email: string;
     role: string;
   };
+  group: Group;
 };
 
 // Type for the API response
@@ -41,8 +43,10 @@ export function useGroups() {
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
+  // This will use the server's logic for filtering groups
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
+    enabled: !!user
   });
 
   const createGroupMutation = useMutation({
@@ -67,7 +71,7 @@ export function useGroups() {
   });
 
   return {
-    groups: groupsQuery.data || [], // Return empty array if data is undefined
+    groups: groupsQuery.data || [],
     isLoading: groupsQuery.isLoading,
     error: groupsQuery.error,
     createGroup: createGroupMutation.mutate,
@@ -79,19 +83,15 @@ export function useGroup(groupId: number) {
   const { toast } = useToast();
   const [_, setLocation] = useLocation();
   const { user } = useAuth();
-
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
-  // Admins can access any group, and the server will handle permissions appropriately
   const groupQuery = useQuery<GroupDetails>({
     queryKey: [`/api/groups/${groupId}`],
     enabled: Boolean(groupId),
-    retry: false, // Don't retry failed requests
-    // Stop query error handling from running for admin roles - let server handle it
+    retry: false,
     meta: { suppressErrorToast: isAdmin }
   });
 
-  // Handle errors with useEffect to avoid re-renders - don't redirect admins
   useEffect(() => {
     if (groupQuery.error && !isAdmin) {
       toast({
@@ -225,7 +225,7 @@ export function useAdminGroups() {
   });
 
   return {
-    groups: groupsQuery.data || [], // Return empty array if data is undefined
+    groups: groupsQuery.data || [],
     isLoading: groupsQuery.isLoading,
     error: groupsQuery.error,
   };
