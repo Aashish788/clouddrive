@@ -43,10 +43,17 @@ export function useGroups() {
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
-  // This will use the server's logic for filtering groups
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
-    enabled: !!user
+    enabled: !!user,
+    select: (data) => {
+      // For regular users, only show groups they are members of (have permission)
+      if (!isAdmin && data) {
+        return data.filter(membership => membership.userId === user?.id);
+      }
+      // For admins, show all groups as before
+      return data;
+    }
   });
 
   const createGroupMutation = useMutation({
