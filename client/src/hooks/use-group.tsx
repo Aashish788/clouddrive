@@ -43,6 +43,10 @@ export function useGroups() {
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
+    select: (data) => {
+      // Only return groups where the user has an actual membership
+      return data.filter(membership => membership.userId === user?.id);
+    }
   });
 
   const createGroupMutation = useMutation({
