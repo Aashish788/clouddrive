@@ -43,7 +43,6 @@ export function useGroups() {
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
-    meta: { suppressErrorToast: isAdmin } // Suppress error toast for admins
   });
 
   const createGroupMutation = useMutation({
