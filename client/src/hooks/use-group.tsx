@@ -49,11 +49,15 @@ export function useGroups() {
     enabled: !!user,
     select: (data) => {
       if (!data || !user) return [];
-      // For regular users, only show groups they are members of
-      if (!isAdmin) {
-        return data.filter(membership => membership.userId === user.id);
+      if (isAdmin) {
+        // For admins/superadmins, show all groups with edit permission
+        return data.map(group => ({
+          ...group,
+          permission: "Edit" as const
+        }));
       }
-      return data;
+      // For regular users, only show groups they are members of
+      return data.filter(membership => membership.userId === user.id);
     }
   });
 
