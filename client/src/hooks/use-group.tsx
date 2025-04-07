@@ -44,8 +44,12 @@ export function useGroups() {
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
     select: (data) => {
-      // Only return groups where the user has an actual membership
-      return data.filter(membership => membership.userId === user?.id);
+      // For non-admin users, only show groups they are members of
+      if (!isAdmin) {
+        return data.filter(membership => membership.userId === user?.id);
+      }
+      // For admins/superadmins, show all groups
+      return data;
     }
   });
 
