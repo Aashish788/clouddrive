@@ -38,22 +38,15 @@ export type GroupDetails = {
   userPermission: "View" | "Edit";
 };
 
+// Regular user groups hook
 export function useGroups() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
+  // Get user's groups from /api/groups
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
     enabled: !!user,
-    select: (data) => {
-      // For regular users, only show groups they are members of (have permission)
-      if (!isAdmin && data) {
-        return data.filter(membership => membership.userId === user?.id);
-      }
-      // For admins, show all groups as before
-      return data;
-    }
   });
 
   const createGroupMutation = useMutation({
@@ -82,7 +75,19 @@ export function useGroups() {
     isLoading: groupsQuery.isLoading,
     error: groupsQuery.error,
     createGroup: createGroupMutation.mutate,
-    isAdmin
+  };
+}
+
+// Admin groups hook - completely separate from regular groups
+export function useAdminGroups() {
+  const groupsQuery = useQuery<Group[]>({
+    queryKey: ["/api/admin/groups"],
+  });
+
+  return {
+    groups: groupsQuery.data || [],
+    isLoading: groupsQuery.isLoading,
+    error: groupsQuery.error,
   };
 }
 
@@ -223,17 +228,5 @@ export function useGroup(groupId: number) {
     removeUser: removeUserMutation.mutate,
     updateGroup: updateGroupMutation.mutate,
     deleteGroup: deleteGroupMutation.mutate,
-  };
-}
-
-export function useAdminGroups() {
-  const groupsQuery = useQuery<Group[]>({
-    queryKey: ["/api/admin/groups"],
-  });
-
-  return {
-    groups: groupsQuery.data || [],
-    isLoading: groupsQuery.isLoading,
-    error: groupsQuery.error,
   };
 }
