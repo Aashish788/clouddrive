@@ -42,10 +42,17 @@ export type GroupDetails = {
 export function useGroups() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
     enabled: !!user,
+    select: (data) => {
+      if (!data || !user) return [];
+      // Return all memberships as they come from the server
+      // Server already filters based on user access
+      return data;
+    }
   });
 
   const createGroupMutation = useMutation({
