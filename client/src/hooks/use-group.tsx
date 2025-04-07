@@ -46,21 +46,7 @@ export function useGroups() {
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
-    enabled: !!user,
-    select: (data) => {
-      if (!data || !user) return [];
-      
-      // For admins, show all groups with edit permission
-      if (isAdmin) {
-        return data.map(group => ({
-          ...group,
-          permission: "Edit" as const
-        }));
-      }
-      
-      // For regular users, show their groups with their assigned permissions
-      return data;
-    }
+    enabled: !!user && !isAdmin, // Only fetch for regular users
   });
 
   const createGroupMutation = useMutation({
@@ -92,10 +78,14 @@ export function useGroups() {
   };
 }
 
-// Admin groups hook - completely separate from regular groups
+// Admin groups hook - shows all groups with edit permission
 export function useAdminGroups() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
+
   const groupsQuery = useQuery<Group[]>({
     queryKey: ["/api/admin/groups"],
+    enabled: !!user && isAdmin,
   });
 
   return {
@@ -114,20 +104,7 @@ export function useGroup(groupId: number) {
   const groupQuery = useQuery<GroupDetails>({
     queryKey: [`/api/groups/${groupId}`],
     enabled: Boolean(groupId),
-    retry: false,
-    meta: { suppressErrorToast: isAdmin }
   });
-
-  useEffect(() => {
-    if (groupQuery.error && !isAdmin) {
-      toast({
-        title: "Access Denied",
-        description: "You don't have access to this group",
-        variant: "destructive",
-      });
-      setLocation("/");
-    }
-  }, [groupQuery.error, toast, setLocation, isAdmin]);
 
   const addUserMutation = useMutation({
     mutationFn: async ({ userId, permission }: { userId: number, permission: "View" | "Edit" }) => {
