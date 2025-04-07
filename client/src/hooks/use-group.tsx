@@ -49,8 +49,16 @@ export function useGroups() {
     enabled: !!user,
     select: (data) => {
       if (!data || !user) return [];
-      // Return all memberships as they come from the server
-      // Server already filters based on user access
+      
+      // For admins, show all groups with edit permission
+      if (isAdmin) {
+        return data.map(group => ({
+          ...group,
+          permission: "Edit" as const
+        }));
+      }
+      
+      // For regular users, show their groups with their assigned permissions
       return data;
     }
   });
