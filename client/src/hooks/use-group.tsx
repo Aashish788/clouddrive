@@ -46,7 +46,7 @@ export function useGroups() {
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
-    enabled: !!user && !isAdmin, // Only fetch for regular users
+    enabled: !!user,
   });
 
   const createGroupMutation = useMutation({
