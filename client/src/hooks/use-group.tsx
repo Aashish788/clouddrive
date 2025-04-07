@@ -43,16 +43,6 @@ export function useGroups() {
 
   const groupsQuery = useQuery<(GroupMembership & { group: Group })[]>({
     queryKey: ["/api/groups"],
-    select: (data) => {
-      if (!user) return [];
-      // For regular users, show only groups they are members of
-      if (!isAdmin) {
-        return data.filter(membership => membership.userId === user.id);
-      }
-      // For admins/superadmins, show all groups
-      return data;
-    },
-    enabled: !!user // Only run query when user is available
   });
 
   const createGroupMutation = useMutation({
@@ -100,7 +90,7 @@ export function useGroup(groupId: number) {
     // Stop query error handling from running for admin roles - let server handle it
     meta: { suppressErrorToast: isAdmin }
   });
-  
+
   // Handle errors with useEffect to avoid re-renders - don't redirect admins
   useEffect(() => {
     if (groupQuery.error && !isAdmin) {
