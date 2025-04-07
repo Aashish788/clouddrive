@@ -49,13 +49,8 @@ export function useGroups() {
     enabled: !!user,
     select: (data) => {
       if (!data || !user) return [];
-      if (isAdmin) {
-        return data;
-      }
-      // For regular users, strictly filter to only show groups they are members of
-      return data.filter(membership => 
-        membership.userId === user.id && membership.groupId === membership.group.id
-      );
+      // The server already filters groups appropriately for both admin and regular users
+      return data;
     }
   });
 
