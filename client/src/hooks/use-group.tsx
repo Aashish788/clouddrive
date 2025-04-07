@@ -49,8 +49,15 @@ export function useGroups() {
     enabled: !!user,
     select: (data) => {
       if (!data || !user) return [];
-      // The server already filters groups appropriately for both admin and regular users
-      return data;
+      if (user.role === "Admin" || user.role === "SuperAdmin") {
+        // For admins/superadmins, show all groups
+        return data.map(membership => ({
+          ...membership,
+          permission: "Edit" as const
+        }));
+      }
+      // For regular users, only show groups they are members of
+      return data.filter(membership => membership.userId === user.id);
     }
   });
 
