@@ -70,18 +70,26 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
         : data;
         
       const res = await apiRequest("POST", url, payload);
-      return res.json();
-    },
-    onSuccess: (_, variables) => {
-      // Invalidate the query for the specific folder where the new folder was created
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/files", variables.groupId, variables.parentId] 
-      });
+      const newFolder = await res.json();
       
-      // Immediately refetch the data to update the UI
-      queryClient.refetchQueries({
-        queryKey: ["/api/files", variables.groupId, variables.parentId],
-      });
+      // Return the new folder with the query parameters
+      return { newFolder, groupId: data.groupId, parentId: data.parentId };
+    },
+    onSuccess: (data) => {
+      // Get the existing query data
+      const queryKey = ["/api/files", data.groupId, data.parentId];
+      const existingData = queryClient.getQueryData<FilesData>(queryKey);
+      
+      // Optimistically update the UI with the new folder
+      if (existingData) {
+        queryClient.setQueryData<FilesData>(queryKey, {
+          ...existingData,
+          folders: [...existingData.folders, data.newFolder]
+        });
+      }
+      
+      // Still invalidate the query to ensure data consistency
+      queryClient.invalidateQueries({ queryKey });
       
       toast({
         title: "Folder created",
@@ -125,32 +133,35 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
           
         const res = await apiRequest("POST", url, payload);
         
-        // For chunked uploads, only invalidate query on last chunk or non-chunked uploads
+        // For chunked uploads, only return full data on last chunk or non-chunked uploads
         if (!data.chunkIndex || (data.chunkIndex === data.totalChunks! - 1)) {
-          return await res.json();
+          const newFile = await res.json();
+          return { newFile, groupId: data.groupId, parentId: data.parentId };
         }
         
-        return await res.json();
+        return { isChunk: true, groupId: data.groupId, parentId: data.parentId };
       } catch (error) {
         console.error("Upload error:", error);
         throw error;
       }
     },
-    onSuccess: (result, variables) => {
-      // Only show success toast and invalidate queries if this is a complete file upload
-      // (either last chunk or not chunked)
-      if (!variables.chunkIndex || 
-          (variables.chunkIndex === variables.totalChunks! - 1) || 
-          !variables.totalChunks) {
-        // Invalidate the query for the specific folder where the file was uploaded
-        queryClient.invalidateQueries({ 
-          queryKey: ["/api/files", variables.groupId, variables.parentId] 
-        });
+    onSuccess: (data) => {
+      // Only update the UI if this is a complete file upload
+      if (!data.isChunk) {
+        // Get the existing query data
+        const queryKey = ["/api/files", data.groupId, data.parentId];
+        const existingData = queryClient.getQueryData<FilesData>(queryKey);
         
-        // Immediately refetch the data to update the UI
-        queryClient.refetchQueries({
-          queryKey: ["/api/files", variables.groupId, variables.parentId],
-        });
+        // Optimistically update the UI with the new file
+        if (existingData && data.newFile) {
+          queryClient.setQueryData<FilesData>(queryKey, {
+            ...existingData,
+            files: [...existingData.files, data.newFile]
+          });
+        }
+        
+        // Still invalidate the query to ensure data consistency
+        queryClient.invalidateQueries({ queryKey });
         
         toast({
           title: "File uploaded",
@@ -171,18 +182,23 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
     mutationFn: async ({ fileId, groupId: fileGroupId, parentId: fileParentId }: 
       { fileId: number, groupId: number | null, parentId: number | null }) => {
       await apiRequest("DELETE", `/api/files/${fileId}`);
-      return { groupId: fileGroupId, parentId: fileParentId };
+      return { fileId, groupId: fileGroupId, parentId: fileParentId };
     },
     onSuccess: (result) => {
-      // Invalidate the specific folder query where the file was deleted from
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/files", result.groupId, result.parentId] 
-      });
+      // Get the existing query data
+      const queryKey = ["/api/files", result.groupId, result.parentId];
+      const existingData = queryClient.getQueryData<FilesData>(queryKey);
       
-      // Immediately refetch the data to update the UI
-      queryClient.refetchQueries({
-        queryKey: ["/api/files", result.groupId, result.parentId],
-      });
+      // Optimistically update the UI by removing the deleted file
+      if (existingData) {
+        queryClient.setQueryData<FilesData>(queryKey, {
+          ...existingData,
+          files: existingData.files.filter(file => file.id !== result.fileId)
+        });
+      }
+      
+      // Still invalidate the query to ensure data consistency
+      queryClient.invalidateQueries({ queryKey });
       
       toast({
         title: "File deleted",
@@ -202,18 +218,23 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
     mutationFn: async ({ folderId, groupId: folderGroupId, parentId: folderParentId }: 
       { folderId: number, groupId: number | null, parentId: number | null }) => {
       await apiRequest("DELETE", `/api/folders/${folderId}`);
-      return { groupId: folderGroupId, parentId: folderParentId };
+      return { folderId, groupId: folderGroupId, parentId: folderParentId };
     },
     onSuccess: (result) => {
-      // Invalidate the specific folder query where the folder was deleted from
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/files", result.groupId, result.parentId] 
-      });
+      // Get the existing query data
+      const queryKey = ["/api/files", result.groupId, result.parentId];
+      const existingData = queryClient.getQueryData<FilesData>(queryKey);
       
-      // Immediately refetch the data to update the UI
-      queryClient.refetchQueries({
-        queryKey: ["/api/files", result.groupId, result.parentId],
-      });
+      // Optimistically update the UI by removing the deleted folder
+      if (existingData) {
+        queryClient.setQueryData<FilesData>(queryKey, {
+          ...existingData,
+          folders: existingData.folders.filter(folder => folder.id !== result.folderId)
+        });
+      }
+      
+      // Still invalidate the query to ensure data consistency
+      queryClient.invalidateQueries({ queryKey });
       
       toast({
         title: "Folder deleted",
@@ -233,18 +254,26 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
     mutationFn: async ({ fileId, name, groupId: fileGroupId, parentId: fileParentId }: 
       { fileId: number, name: string, groupId: number | null, parentId: number | null }) => {
       const res = await apiRequest("PATCH", `/api/files/${fileId}`, { name });
-      return { result: await res.json(), groupId: fileGroupId, parentId: fileParentId };
+      const updatedFile = await res.json();
+      return { updatedFile, fileId, groupId: fileGroupId, parentId: fileParentId };
     },
     onSuccess: (data) => {
-      // Invalidate the specific folder query where the file was renamed
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/files", data.groupId, data.parentId] 
-      });
+      // Get the existing query data
+      const queryKey = ["/api/files", data.groupId, data.parentId];
+      const existingData = queryClient.getQueryData<FilesData>(queryKey);
       
-      // Immediately refetch the data to update the UI
-      queryClient.refetchQueries({
-        queryKey: ["/api/files", data.groupId, data.parentId],
-      });
+      // Optimistically update the UI with the renamed file
+      if (existingData) {
+        queryClient.setQueryData<FilesData>(queryKey, {
+          ...existingData,
+          files: existingData.files.map(file => 
+            file.id === data.fileId ? { ...file, name: data.updatedFile.name } : file
+          )
+        });
+      }
+      
+      // Still invalidate the query to ensure data consistency
+      queryClient.invalidateQueries({ queryKey });
       
       toast({
         title: "File renamed",
@@ -264,18 +293,26 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
     mutationFn: async ({ folderId, name, groupId: folderGroupId, parentId: folderParentId }: 
       { folderId: number, name: string, groupId: number | null, parentId: number | null }) => {
       const res = await apiRequest("PATCH", `/api/folders/${folderId}`, { name });
-      return { result: await res.json(), groupId: folderGroupId, parentId: folderParentId };
+      const updatedFolder = await res.json();
+      return { updatedFolder, folderId, groupId: folderGroupId, parentId: folderParentId };
     },
     onSuccess: (data) => {
-      // Invalidate the specific folder query where the folder was renamed
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/files", data.groupId, data.parentId] 
-      });
+      // Get the existing query data
+      const queryKey = ["/api/files", data.groupId, data.parentId];
+      const existingData = queryClient.getQueryData<FilesData>(queryKey);
       
-      // Immediately refetch the data to update the UI
-      queryClient.refetchQueries({
-        queryKey: ["/api/files", data.groupId, data.parentId],
-      });
+      // Optimistically update the UI with the renamed folder
+      if (existingData) {
+        queryClient.setQueryData<FilesData>(queryKey, {
+          ...existingData,
+          folders: existingData.folders.map(folder => 
+            folder.id === data.folderId ? { ...folder, name: data.updatedFolder.name } : folder
+          )
+        });
+      }
+      
+      // Still invalidate the query to ensure data consistency
+      queryClient.invalidateQueries({ queryKey });
       
       toast({
         title: "Folder renamed",
