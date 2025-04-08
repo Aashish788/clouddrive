@@ -8,6 +8,7 @@ import { File, Folder, Permission } from "@shared/schema";
 
 const mkdirAsync = promisify(fs.mkdir);
 const writeFileAsync = promisify(fs.writeFile);
+const appendFileAsync = promisify(fs.appendFile);
 const unlinkAsync = promisify(fs.unlink);
 
 // Ensure the upload directory exists
@@ -15,6 +16,15 @@ const UPLOAD_DIR = path.join(import.meta.dirname, "..", "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
+
+// Create a temp directory for file chunks
+const TEMP_DIR = path.join(UPLOAD_DIR, "temp");
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+// Map to track file uploads in progress (by userId_fileName)
+const fileUploads = new Map();
 
 // Define validation schemas
 const createFolderSchema = z.object({
@@ -344,7 +354,7 @@ export function setupFileRoutes(app: Express) {
       
       // In a real application, this would use a multipart form parser like multer
       // For simplicity, we'll use JSON with base64 encoded data
-      const { name, parentId, type, data } = req.body;
+      const { name, parentId, type, data, chunkIndex, totalChunks } = req.body;
       
       if (!name || !type || !data) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -364,30 +374,122 @@ export function setupFileRoutes(app: Express) {
         }
       }
       
-      // Create a unique filename
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const filePath = path.join(UPLOAD_DIR, fileName);
-      
-      // Decode and save the file
-      const fileBuffer = Buffer.from(data, 'base64');
-      await writeFileAsync(filePath, fileBuffer);
-      
-      // Calculate file size
-      const size = fileBuffer.length;
-      
-      // Create the file record (with null groupId for personal files)
-      const newFile = await storage.createFile({
-        name,
-        type,
-        size,
-        path: filePath,
-        parentId: parentId ? Number(parentId) : null,
-        groupId: null,
-        uploadedById: userId
-      });
-      
-      res.status(201).json(newFile);
+      // Handle chunked file uploads
+      if (typeof chunkIndex === 'number' && typeof totalChunks === 'number') {
+        const fileKey = `${userId}_${name}`;
+        
+        // Create temp file name for the chunk
+        const chunkFileName = path.join(TEMP_DIR, `${fileKey}_chunk_${chunkIndex}`);
+        
+        // Decode and save the chunk
+        const fileBuffer = Buffer.from(data, 'base64');
+        await writeFileAsync(chunkFileName, fileBuffer);
+        
+        // Initialize upload tracking if it's the first chunk
+        if (chunkIndex === 0) {
+          fileUploads.set(fileKey, {
+            name,
+            type,
+            parentId: parentId ? Number(parentId) : null,
+            groupId: null,
+            totalChunks,
+            receivedChunks: new Set([chunkIndex]),
+            uploadedById: userId,
+            size: fileBuffer.length
+          });
+        } else {
+          // Update tracking for this file
+          const tracking = fileUploads.get(fileKey);
+          if (!tracking) {
+            return res.status(400).json({ message: "Upload not properly initialized" });
+          }
+          
+          // Add this chunk to received chunks
+          tracking.receivedChunks.add(chunkIndex);
+          tracking.size += fileBuffer.length;
+        }
+        
+        // Check if all chunks are received
+        const tracking = fileUploads.get(fileKey);
+        
+        if (tracking && tracking.receivedChunks.size === totalChunks) {
+          // All chunks received, combine them
+          const timestamp = Date.now();
+          const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+          const filePath = path.join(UPLOAD_DIR, fileName);
+          
+          // Combine all chunks into the final file
+          const writeStream = fs.createWriteStream(filePath);
+          
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkPath = path.join(TEMP_DIR, `${fileKey}_chunk_${i}`);
+            const chunkData = await fs.promises.readFile(chunkPath);
+            writeStream.write(chunkData);
+            
+            // Delete the chunk file after it's been added to the final file
+            await unlinkAsync(chunkPath);
+          }
+          
+          writeStream.end();
+          
+          // Wait for the file to be fully written
+          await new Promise<void>((resolve) => {
+            writeStream.on('finish', () => {
+              resolve();
+            });
+          });
+          
+          // Create the file record with the combined file size
+          const newFile = await storage.createFile({
+            name,
+            type,
+            size: tracking.size,
+            path: filePath,
+            parentId: tracking.parentId,
+            groupId: null,
+            uploadedById: userId
+          });
+          
+          // Clean up tracking
+          fileUploads.delete(fileKey);
+          
+          res.status(201).json(newFile);
+        } else {
+          // Not all chunks received yet, acknowledge this chunk
+          res.status(200).json({
+            message: "Chunk received",
+            chunkIndex,
+            receivedChunks: tracking ? Array.from(tracking.receivedChunks) : [chunkIndex],
+            totalChunks
+          });
+        }
+      } else {
+        // Single file upload (small files)
+        // Create a unique filename
+        const timestamp = Date.now();
+        const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(UPLOAD_DIR, fileName);
+        
+        // Decode and save the file
+        const fileBuffer = Buffer.from(data, 'base64');
+        await writeFileAsync(filePath, fileBuffer);
+        
+        // Calculate file size
+        const size = fileBuffer.length;
+        
+        // Create the file record (with null groupId for personal files)
+        const newFile = await storage.createFile({
+          name,
+          type,
+          size,
+          path: filePath,
+          parentId: parentId ? Number(parentId) : null,
+          groupId: null,
+          uploadedById: userId
+        });
+        
+        res.status(201).json(newFile);
+      }
     } catch (error) {
       next(error);
     }
@@ -402,7 +504,7 @@ export function setupFileRoutes(app: Express) {
       
       // In a real application, this would use a multipart form parser like multer
       // For simplicity, we'll use JSON with base64 encoded data
-      const { name, groupId, parentId, type, data } = req.body;
+      const { name, groupId, parentId, type, data, chunkIndex, totalChunks } = req.body;
       
       if (!name || !groupId || !type || !data) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -432,31 +534,450 @@ export function setupFileRoutes(app: Express) {
         }
       }
       
-      // Create a unique filename
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const filePath = path.join(UPLOAD_DIR, fileName);
-      
-      // Decode and save the file
-      const fileBuffer = Buffer.from(data, 'base64');
-      await writeFileAsync(filePath, fileBuffer);
-      
-      // Calculate file size
-      const size = fileBuffer.length;
-      
-      // Create the file record
-      const newFile = await storage.createFile({
-        name,
-        type,
-        size,
-        path: filePath,
-        parentId: parentId ? Number(parentId) : null,
-        groupId: Number(groupId),
-        uploadedById: userId
-      });
-      
-      res.status(201).json(newFile);
+      // Handle chunked file uploads
+      if (typeof chunkIndex === 'number' && typeof totalChunks === 'number') {
+        const fileKey = `${userId}_${groupId}_${name}`;
+        
+        // Create temp file name for the chunk
+        const chunkFileName = path.join(TEMP_DIR, `${fileKey}_chunk_${chunkIndex}`);
+        
+        // Decode and save the chunk
+        const fileBuffer = Buffer.from(data, 'base64');
+        await writeFileAsync(chunkFileName, fileBuffer);
+        
+        // Initialize upload tracking if it's the first chunk
+        if (chunkIndex === 0) {
+          fileUploads.set(fileKey, {
+            name,
+            type,
+            parentId: parentId ? Number(parentId) : null,
+            groupId: Number(groupId),
+            totalChunks,
+            receivedChunks: new Set([chunkIndex]),
+            uploadedById: userId,
+            size: fileBuffer.length
+          });
+        } else {
+          // Update tracking for this file
+          const tracking = fileUploads.get(fileKey);
+          if (!tracking) {
+            return res.status(400).json({ message: "Upload not properly initialized" });
+          }
+          
+          // Add this chunk to received chunks
+          tracking.receivedChunks.add(chunkIndex);
+          tracking.size += fileBuffer.length;
+        }
+        
+        // Check if all chunks are received
+        const tracking = fileUploads.get(fileKey);
+        
+        if (tracking && tracking.receivedChunks.size === totalChunks) {
+          // All chunks received, combine them
+          const timestamp = Date.now();
+          const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+          const filePath = path.join(UPLOAD_DIR, fileName);
+          
+          // Combine all chunks into the final file
+          const writeStream = fs.createWriteStream(filePath);
+          
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkPath = path.join(TEMP_DIR, `${fileKey}_chunk_${i}`);
+            const chunkData = await fs.promises.readFile(chunkPath);
+            writeStream.write(chunkData);
+            
+            // Delete the chunk file after it's been added to the final file
+            await unlinkAsync(chunkPath);
+          }
+          
+          writeStream.end();
+          
+          // Wait for the file to be fully written
+          await new Promise<void>((resolve) => {
+            writeStream.on('finish', () => {
+              resolve();
+            });
+          });
+          
+          // Create the file record with the combined file size
+          const newFile = await storage.createFile({
+            name,
+            type,
+            size: tracking.size,
+            path: filePath,
+            parentId: tracking.parentId,
+            groupId: tracking.groupId,
+            uploadedById: userId
+          });
+          
+          // Clean up tracking
+          fileUploads.delete(fileKey);
+          
+          res.status(201).json(newFile);
+        } else {
+          // Not all chunks received yet, acknowledge this chunk
+          res.status(200).json({
+            message: "Chunk received",
+            chunkIndex,
+            receivedChunks: tracking ? Array.from(tracking.receivedChunks) : [chunkIndex],
+            totalChunks
+          });
+        }
+      } else {
+        // Single file upload (small files)
+        // Create a unique filename
+        const timestamp = Date.now();
+        const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(UPLOAD_DIR, fileName);
+        
+        // Decode and save the file
+        const fileBuffer = Buffer.from(data, 'base64');
+        await writeFileAsync(filePath, fileBuffer);
+        
+        // Calculate file size
+        const size = fileBuffer.length;
+        
+        // Create the file record
+        const newFile = await storage.createFile({
+          name,
+          type,
+          size,
+          path: filePath,
+          parentId: parentId ? Number(parentId) : null,
+          groupId: Number(groupId),
+          uploadedById: userId
+        });
+        
+        res.status(201).json(newFile);
+      }
     } catch (error) {
+      next(error);
+    }
+  });
+  
+  // NEW: Binary upload endpoint for personal files
+  app.post("/api/personal-files/binary", async (req, res, next) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Get metadata from headers
+      const name = req.headers['x-file-name'] as string;
+      const type = req.headers['x-file-type'] as string;
+      const parentId = req.headers['x-parent-id'] ? Number(req.headers['x-parent-id']) : null;
+      const chunkIndex = req.headers['x-chunk-index'] ? Number(req.headers['x-chunk-index']) : null;
+      const totalChunks = req.headers['x-total-chunks'] ? Number(req.headers['x-total-chunks']) : null;
+      
+      if (!name || !type) {
+        return res.status(400).json({ message: "Missing required headers" });
+      }
+      
+      const userId = req.user!.id;
+      
+      // If parentId is provided, check if it exists and belongs to the user
+      if (parentId) {
+        const parentFolder = await storage.getFolder(Number(parentId));
+        if (!parentFolder) {
+          return res.status(404).json({ message: "Parent folder not found" });
+        }
+        
+        if (parentFolder.createdById !== userId || parentFolder.groupId !== null) {
+          return res.status(403).json({ message: "You don't have access to this parent folder" });
+        }
+      }
+      
+      // Handle chunked file uploads
+      if (typeof chunkIndex === 'number' && typeof totalChunks === 'number') {
+        const fileKey = `${userId}_${name}`;
+        
+        // Create temp file name for the chunk
+        const chunkFileName = path.join(TEMP_DIR, `${fileKey}_chunk_${chunkIndex}`);
+        
+        // Write raw binary data directly to file
+        await fs.promises.writeFile(chunkFileName, req.body);
+        const chunkSize = req.body.length;
+        
+        // Initialize upload tracking if it's the first chunk
+        if (chunkIndex === 0) {
+          fileUploads.set(fileKey, {
+            name,
+            type,
+            parentId: parentId ? Number(parentId) : null,
+            groupId: null,
+            totalChunks,
+            receivedChunks: new Set([chunkIndex]),
+            uploadedById: userId,
+            size: chunkSize
+          });
+        } else {
+          // Update tracking for this file
+          const tracking = fileUploads.get(fileKey);
+          if (!tracking) {
+            return res.status(400).json({ message: "Upload not properly initialized" });
+          }
+          
+          // Add this chunk to received chunks
+          tracking.receivedChunks.add(chunkIndex);
+          tracking.size += chunkSize;
+        }
+        
+        // Check if all chunks are received
+        const tracking = fileUploads.get(fileKey);
+        
+        if (tracking && tracking.receivedChunks.size === totalChunks) {
+          // All chunks received, combine them
+          const timestamp = Date.now();
+          const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+          const filePath = path.join(UPLOAD_DIR, fileName);
+          
+          // Combine all chunks into the final file
+          const writeStream = fs.createWriteStream(filePath);
+          
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkPath = path.join(TEMP_DIR, `${fileKey}_chunk_${i}`);
+            const chunkData = await fs.promises.readFile(chunkPath);
+            writeStream.write(chunkData);
+            
+            // Delete the chunk file after it's been added to the final file
+            await unlinkAsync(chunkPath);
+          }
+          
+          writeStream.end();
+          
+          // Wait for the file to be fully written
+          await new Promise<void>((resolve) => {
+            writeStream.on('finish', () => {
+              resolve();
+            });
+          });
+          
+          // Create the file record with the combined file size
+          const newFile = await storage.createFile({
+            name,
+            type,
+            size: tracking.size,
+            path: filePath,
+            parentId: tracking.parentId,
+            groupId: null,
+            uploadedById: userId
+          });
+          
+          // Clean up tracking
+          fileUploads.delete(fileKey);
+          
+          res.status(201).json(newFile);
+        } else {
+          // Not all chunks received yet, acknowledge this chunk
+          res.status(200).json({
+            message: "Chunk received",
+            chunkIndex,
+            receivedChunks: tracking ? Array.from(tracking.receivedChunks) : [chunkIndex],
+            totalChunks
+          });
+        }
+      } else {
+        // Single file upload (small files)
+        // Create a unique filename
+        const timestamp = Date.now();
+        const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(UPLOAD_DIR, fileName);
+        
+        // Write raw binary data directly to file
+        await fs.promises.writeFile(filePath, req.body);
+        
+        // Calculate file size
+        const size = req.body.length;
+        
+        // Create the file record (with null groupId for personal files)
+        const newFile = await storage.createFile({
+          name,
+          type,
+          size,
+          path: filePath,
+          parentId: parentId ? Number(parentId) : null,
+          groupId: null,
+          uploadedById: userId
+        });
+        
+        res.status(201).json(newFile);
+      }
+    } catch (error) {
+      console.error("Binary upload error:", error);
+      next(error);
+    }
+  });
+  
+  // NEW: Binary upload endpoint for group files
+  app.post("/api/files/binary", async (req, res, next) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Get metadata from headers
+      const name = req.headers['x-file-name'] as string;
+      const type = req.headers['x-file-type'] as string;
+      const groupId = req.headers['x-group-id'] ? Number(req.headers['x-group-id']) : null;
+      const parentId = req.headers['x-parent-id'] ? Number(req.headers['x-parent-id']) : null;
+      const chunkIndex = req.headers['x-chunk-index'] ? Number(req.headers['x-chunk-index']) : null;
+      const totalChunks = req.headers['x-total-chunks'] ? Number(req.headers['x-total-chunks']) : null;
+      
+      if (!name || !type || !groupId) {
+        return res.status(400).json({ message: "Missing required headers" });
+      }
+      
+      // Check if user has edit permissions for this group
+      const userId = req.user!.id;
+      const userPermission = await storage.getUserPermissionForGroup(userId, Number(groupId));
+      
+      if (!userPermission) {
+        return res.status(403).json({ message: "You don't have access to this group" });
+      }
+      
+      if (userPermission !== "Edit") {
+        return res.status(403).json({ message: "You need edit permission to upload files" });
+      }
+      
+      // If parentId is provided, check if it exists and belongs to the same group
+      if (parentId) {
+        const parentFolder = await storage.getFolder(Number(parentId));
+        if (!parentFolder) {
+          return res.status(404).json({ message: "Parent folder not found" });
+        }
+        
+        if (parentFolder.groupId !== Number(groupId)) {
+          return res.status(400).json({ message: "Parent folder does not belong to the specified group" });
+        }
+      }
+      
+      // Handle chunked file uploads
+      if (typeof chunkIndex === 'number' && typeof totalChunks === 'number') {
+        const fileKey = `${userId}_${groupId}_${name}`;
+        
+        // Create temp file name for the chunk
+        const chunkFileName = path.join(TEMP_DIR, `${fileKey}_chunk_${chunkIndex}`);
+        
+        // Write raw binary data directly to file
+        await fs.promises.writeFile(chunkFileName, req.body);
+        const chunkSize = req.body.length;
+        
+        // Initialize upload tracking if it's the first chunk
+        if (chunkIndex === 0) {
+          fileUploads.set(fileKey, {
+            name,
+            type,
+            parentId: parentId ? Number(parentId) : null,
+            groupId: Number(groupId),
+            totalChunks,
+            receivedChunks: new Set([chunkIndex]),
+            uploadedById: userId,
+            size: chunkSize
+          });
+        } else {
+          // Update tracking for this file
+          const tracking = fileUploads.get(fileKey);
+          if (!tracking) {
+            return res.status(400).json({ message: "Upload not properly initialized" });
+          }
+          
+          // Add this chunk to received chunks
+          tracking.receivedChunks.add(chunkIndex);
+          tracking.size += chunkSize;
+        }
+        
+        // Check if all chunks are received
+        const tracking = fileUploads.get(fileKey);
+        
+        if (tracking && tracking.receivedChunks.size === totalChunks) {
+          // All chunks received, combine them
+          const timestamp = Date.now();
+          const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+          const filePath = path.join(UPLOAD_DIR, fileName);
+          
+          // Combine all chunks into the final file
+          const writeStream = fs.createWriteStream(filePath);
+          
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkPath = path.join(TEMP_DIR, `${fileKey}_chunk_${i}`);
+            
+            // Check if chunk exists
+            if (!fs.existsSync(chunkPath)) {
+              return res.status(400).json({ 
+                message: `Missing chunk ${i}`,
+                receivedChunks: Array.from(tracking.receivedChunks),
+                totalChunks
+              });
+            }
+            
+            const chunkData = await fs.promises.readFile(chunkPath);
+            writeStream.write(chunkData);
+            
+            // Delete the chunk file after it's been added to the final file
+            await unlinkAsync(chunkPath);
+          }
+          
+          writeStream.end();
+          
+          // Wait for the file to be fully written
+          await new Promise<void>((resolve) => {
+            writeStream.on('finish', () => {
+              resolve();
+            });
+          });
+          
+          // Create the file record with the combined file size
+          const newFile = await storage.createFile({
+            name,
+            type,
+            size: tracking.size,
+            path: filePath,
+            parentId: tracking.parentId,
+            groupId: tracking.groupId,
+            uploadedById: userId
+          });
+          
+          // Clean up tracking
+          fileUploads.delete(fileKey);
+          
+          res.status(201).json(newFile);
+        } else {
+          // Not all chunks received yet, acknowledge this chunk
+          res.status(200).json({
+            message: "Chunk received",
+            chunkIndex,
+            receivedChunks: tracking ? Array.from(tracking.receivedChunks) : [chunkIndex],
+            totalChunks
+          });
+        }
+      } else {
+        // Single file upload (small files)
+        // Create a unique filename
+        const timestamp = Date.now();
+        const fileName = `${timestamp}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(UPLOAD_DIR, fileName);
+        
+        // Write raw binary data directly to file
+        await fs.promises.writeFile(filePath, req.body);
+        
+        // Calculate file size
+        const size = req.body.length;
+        
+        // Create the file record
+        const newFile = await storage.createFile({
+          name,
+          type,
+          size,
+          path: filePath,
+          parentId: parentId ? Number(parentId) : null,
+          groupId: Number(groupId),
+          uploadedById: userId
+        });
+        
+        res.status(201).json(newFile);
+      }
+    } catch (error) {
+      console.error("Binary upload error:", error);
       next(error);
     }
   });

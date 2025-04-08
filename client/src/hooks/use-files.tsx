@@ -77,6 +77,12 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       queryClient.invalidateQueries({ 
         queryKey: ["/api/files", variables.groupId, variables.parentId] 
       });
+      
+      // Immediately refetch the data to update the UI
+      queryClient.refetchQueries({
+        queryKey: ["/api/files", variables.groupId, variables.parentId],
+      });
+      
       toast({
         title: "Folder created",
         description: "The folder has been created successfully",
@@ -92,29 +98,65 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
   });
 
   const uploadFileMutation = useMutation({
-    mutationFn: async (data: { name: string, type: string, data: string, groupId: number | null, parentId: number | null }) => {
-      // If groupId is null or 0, we're uploading to personal space
-      const url = (!data.groupId || data.groupId === 0) ? "/api/personal-files" : "/api/files";
-      
-      // Remove groupId for personal files endpoint or ensure it's included for group files
-      const payload = (!data.groupId || data.groupId === 0) 
-        ? { name: data.name, type: data.type, data: data.data, parentId: data.parentId }
-        : data;
+    mutationFn: async (data: { 
+      name: string, 
+      type: string, 
+      data: string, 
+      groupId: number | null, 
+      parentId: number | null,
+      chunkIndex?: number,
+      totalChunks?: number
+    }) => {
+      try {
+        // If groupId is null or 0, we're uploading to personal space
+        const url = (!data.groupId || data.groupId === 0) ? "/api/personal-files" : "/api/files";
         
-      const res = await apiRequest("POST", url, payload);
-      return res.json();
+        // Remove groupId for personal files endpoint or ensure it's included for group files
+        const payload = (!data.groupId || data.groupId === 0) 
+          ? { 
+              name: data.name, 
+              type: data.type, 
+              data: data.data, 
+              parentId: data.parentId,
+              chunkIndex: data.chunkIndex,
+              totalChunks: data.totalChunks
+            }
+          : data;
+          
+        const res = await apiRequest("POST", url, payload);
+        
+        // For chunked uploads, only invalidate query on last chunk or non-chunked uploads
+        if (!data.chunkIndex || (data.chunkIndex === data.totalChunks! - 1)) {
+          return await res.json();
+        }
+        
+        return await res.json();
+      } catch (error) {
+        console.error("Upload error:", error);
+        throw error;
+      }
     },
-    onSuccess: (_, variables) => {
-      // Invalidate the query for the specific folder where the file was uploaded
-      // This ensures that when we upload to a folder, the folder's content is refreshed
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/files", variables.groupId, variables.parentId] 
-      });
-      
-      toast({
-        title: "File uploaded",
-        description: "The file has been uploaded successfully",
-      });
+    onSuccess: (result, variables) => {
+      // Only show success toast and invalidate queries if this is a complete file upload
+      // (either last chunk or not chunked)
+      if (!variables.chunkIndex || 
+          (variables.chunkIndex === variables.totalChunks! - 1) || 
+          !variables.totalChunks) {
+        // Invalidate the query for the specific folder where the file was uploaded
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/files", variables.groupId, variables.parentId] 
+        });
+        
+        // Immediately refetch the data to update the UI
+        queryClient.refetchQueries({
+          queryKey: ["/api/files", variables.groupId, variables.parentId],
+        });
+        
+        toast({
+          title: "File uploaded",
+          description: "The file has been uploaded successfully",
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -136,6 +178,12 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       queryClient.invalidateQueries({ 
         queryKey: ["/api/files", result.groupId, result.parentId] 
       });
+      
+      // Immediately refetch the data to update the UI
+      queryClient.refetchQueries({
+        queryKey: ["/api/files", result.groupId, result.parentId],
+      });
+      
       toast({
         title: "File deleted",
         description: "The file has been deleted successfully",
@@ -161,6 +209,12 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       queryClient.invalidateQueries({ 
         queryKey: ["/api/files", result.groupId, result.parentId] 
       });
+      
+      // Immediately refetch the data to update the UI
+      queryClient.refetchQueries({
+        queryKey: ["/api/files", result.groupId, result.parentId],
+      });
+      
       toast({
         title: "Folder deleted",
         description: "The folder has been deleted successfully",
@@ -186,6 +240,12 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       queryClient.invalidateQueries({ 
         queryKey: ["/api/files", data.groupId, data.parentId] 
       });
+      
+      // Immediately refetch the data to update the UI
+      queryClient.refetchQueries({
+        queryKey: ["/api/files", data.groupId, data.parentId],
+      });
+      
       toast({
         title: "File renamed",
         description: "The file has been renamed successfully",
@@ -211,6 +271,12 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
       queryClient.invalidateQueries({ 
         queryKey: ["/api/files", data.groupId, data.parentId] 
       });
+      
+      // Immediately refetch the data to update the UI
+      queryClient.refetchQueries({
+        queryKey: ["/api/files", data.groupId, data.parentId],
+      });
+      
       toast({
         title: "Folder renamed",
         description: "The folder has been renamed successfully",
@@ -242,6 +308,7 @@ export function useFiles(groupId: number | null, parentId: number | null = null)
     filesData: filesQuery.data,
     isLoading: filesQuery.isLoading,
     error: filesQuery.error,
+    refetch: filesQuery.refetch,
     createFolder: createFolderMutation.mutate,
     uploadFile: uploadFileMutation.mutate,
     deleteFile,

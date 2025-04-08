@@ -3,8 +3,16 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// Increase the payload size limit to 5GB (well beyond 2GB requirement) to ensure large file handling
+app.use(express.json({ limit: '5gb' }));
+app.use(express.urlencoded({ extended: false, limit: '5gb' }));
+
+// Add raw body parser with large limit for file uploads
+app.use(express.raw({
+  type: 'application/octet-stream',
+  limit: '5gb'
+}));
 
 app.use((req, res, next) => {
   const start = Date.now();

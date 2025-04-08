@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -51,8 +50,13 @@ export function useGroups() {
 
   const createGroupMutation = useMutation({
     mutationFn: async (name: string) => {
-      const res = await apiRequest("POST", "/api/groups", { name });
-      return res.json();
+      try {
+        const res = await apiRequest("POST", "/api/groups", { name });
+        return await res.json();
+      } catch (error: any) {
+        console.error("Error creating group:", error);
+        throw new Error(error.message || "Failed to create group");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
@@ -74,6 +78,7 @@ export function useGroups() {
     groups: groupsQuery.data || [],
     isLoading: groupsQuery.isLoading,
     error: groupsQuery.error,
+    isAdmin,
     createGroup: createGroupMutation.mutate,
   };
 }

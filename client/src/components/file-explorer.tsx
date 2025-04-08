@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useFiles, File as FileType, Folder } from "@/hooks/use-files";
 import { useLocation } from "wouter";
 import { FileCard } from "@/components/ui/file-card";
 import { FolderCard } from "@/components/ui/folder-card";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import { 
   ALargeSmall, 
   List, 
@@ -14,7 +15,8 @@ import {
   AlertCircle,
   MoreVertical,
   Folder as FolderIcon,
-  File as FileIcon
+  File as FileIcon,
+  RefreshCw
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,11 +35,26 @@ type SortOption = "name" | "date" | "size" | "type";
 type SortDirection = "asc" | "desc";
 
 export function FileExplorer({ groupId, parentId }: FileExplorerProps) {
-  const { filesData, isLoading, error } = useFiles(groupId, parentId);
+  const { filesData, isLoading, error, refetch } = useFiles(groupId, parentId);
   const [_, setLocation] = useLocation();
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortBy, setSortBy] = useState<SortOption>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const { user } = useAuth();
+  const isAuthenticated = !!user;
+  
+  // Refresh files data when component mounts, user changes or params change
+  useEffect(() => {
+    // Immediate refetch when component mounts or dependencies change
+    refetch();
+    
+    // Set up automatic refresh interval
+    const interval = setInterval(() => {
+      refetch();
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [refetch, user?.id, groupId, parentId]);
   
   // Handle sorting of files and folders
   const sortItems = <T extends FileType | Folder>(items: T[]): T[] => {
@@ -140,6 +157,14 @@ export function FileExplorer({ groupId, parentId }: FileExplorerProps) {
             onClick={() => setViewMode("list")}
           >
             <List className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8" 
+            onClick={() => refetch()}
+          >
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>

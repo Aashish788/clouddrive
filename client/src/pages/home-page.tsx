@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function HomePage() {
-  const { groups, isLoading, createGroup } = useGroups();
+  const { groups, isLoading, createGroup, isAdmin } = useGroups();
   const { openModal } = useModal();
   const [_, setLocation] = useLocation();
   const [newGroupName, setNewGroupName] = useState("");
@@ -26,9 +26,6 @@ export default function HomePage() {
   // Check if we're viewing a personal folder
   const [matchPersonalFolder, params] = useRoute<{ folderId: string }>("/personal/folder/:folderId");
   const personalFolderId = matchPersonalFolder ? parseInt(params.folderId) : null;
-  
-  // Check if user is an admin or superadmin
-  const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
   
   const handleCreateFolder = () => {
     setIsCreateFolderOpen(true);

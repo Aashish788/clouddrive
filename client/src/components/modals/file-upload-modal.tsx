@@ -6,6 +6,10 @@ import { useModal } from "@/hooks/use-modal";
 import { useFiles } from "@/hooks/use-files";
 import { Upload, File as FileIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+
+// Set chunk size to 5MB for efficient uploading of large files
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 
 export function FileUploadModal() {
   const { activeModal, modalData, closeModal } = useModal();
@@ -13,6 +17,7 @@ export function FileUploadModal() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const { toast } = useToast();
   
   const groupId = modalData?.groupId;
   const parentId = modalData?.parentId;
@@ -22,7 +27,17 @@ export function FileUploadModal() {
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      // Check if file size is within limits (2GB max)
+      if (file.size > 2 * 1024 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Maximum file size is 2GB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedFile(file);
     }
   };
   
@@ -30,48 +45,111 @@ export function FileUploadModal() {
     if (!selectedFile) return;
     
     setUploading(true);
-    setProgress(10);
-    
-    // Simulate progress
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => Math.min(prev + 10, 90));
-    }, 300);
+    setProgress(0);
     
     try {
-      // Read the file as a base64 string
-      const reader = new FileReader();
-      reader.readAsDataURL(selectedFile);
+      // For large files, use binary upload with chunking
+      if (selectedFile.size > CHUNK_SIZE) {
+        await uploadLargeFile(selectedFile);
+      } else {
+        // For small files, use the base64 approach
+        const reader = new FileReader();
+        reader.readAsDataURL(selectedFile);
+        
+        reader.onload = async () => {
+          const base64Data = reader.result as string;
+          // Remove the data:mimetype;base64, prefix
+          const base64Content = base64Data.split(',')[1];
+          
+          // Upload the file - if groupId is null, use a "personal" storage area
+          await uploadFile({
+            name: selectedFile.name,
+            type: selectedFile.type,
+            data: base64Content,
+            groupId: groupId, // Will be null for personal files
+            parentId: parentId || null
+          });
+          
+          setProgress(100);
+          
+          // Wait a moment to show 100% progress, then close
+          setTimeout(() => {
+            setUploading(false);
+            setSelectedFile(null);
+            setProgress(0);
+            closeModal();
+          }, 500);
+        };
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload file",
+        variant: "destructive",
+      });
+      setUploading(false);
+      setProgress(0);
+    }
+  };
+  
+  // New function to upload large files using binary chunks
+  const uploadLargeFile = async (file: File) => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let uploadedChunks = 0;
+    
+    for (let start = 0; start < file.size; start += CHUNK_SIZE) {
+      // Get a slice of the file
+      const chunk = file.slice(start, start + CHUNK_SIZE);
       
-      reader.onload = () => {
-        const base64Data = reader.result as string;
-        // Remove the data:mimetype;base64, prefix
-        const base64Content = base64Data.split(',')[1];
-        
-        // Upload the file - if groupId is null, use a "personal" storage area
-        uploadFile({
-          name: selectedFile.name,
-          type: selectedFile.type,
-          data: base64Content,
-          groupId: groupId, // Will be null for personal files
-          parentId: parentId || null
-        });
-        
-        clearInterval(progressInterval);
-        setProgress(100);
-        
-        // Wait a moment to show 100% progress, then close
+      // Create headers with file metadata
+      const headers = {
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': file.name,
+        'X-File-Type': file.type,
+        'X-Chunk-Index': uploadedChunks.toString(),
+        'X-Total-Chunks': totalChunks.toString()
+      };
+      
+      // Add groupId or parentId if present
+      if (groupId !== null && groupId !== undefined) {
+        headers['X-Group-Id'] = groupId.toString();
+      }
+      
+      if (parentId !== null && parentId !== undefined) {
+        headers['X-Parent-Id'] = parentId.toString();
+      }
+      
+      // Upload the binary chunk
+      const endpoint = (!groupId || groupId === 0) 
+        ? '/api/personal-files/binary' 
+        : '/api/files/binary';
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: headers,
+        body: chunk,
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to upload chunk: ${errorText}`);
+      }
+      
+      uploadedChunks++;
+      // Update progress based on chunks uploaded
+      setProgress(Math.round((uploadedChunks / totalChunks) * 100));
+      
+      // Check if this was the last chunk
+      if (uploadedChunks === totalChunks) {
         setTimeout(() => {
           setUploading(false);
           setSelectedFile(null);
           setProgress(0);
           closeModal();
         }, 500);
-      };
-    } catch (error) {
-      console.error("Upload error:", error);
-      clearInterval(progressInterval);
-      setUploading(false);
-      setProgress(0);
+      }
     }
   };
   
@@ -90,7 +168,7 @@ export function FileUploadModal() {
             >
               <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-1">Drag a file here or click to browse</h3>
-              <p className="text-sm text-gray-500">Upload any file up to 100MB</p>
+              <p className="text-sm text-gray-500">Upload any file up to 2GB</p>
               <Input
                 ref={fileInputRef}
                 type="file"

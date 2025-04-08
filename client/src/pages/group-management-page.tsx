@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/layout";
-import { useAdminGroups, useGroup } from "@/hooks/use-group";
+import { useAdminGroups, useGroups } from "@/hooks/use-group";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { 
@@ -19,6 +19,7 @@ import { Loader2, Plus, ArrowRight, Users, Pencil, Trash } from "lucide-react";
 
 export default function GroupManagementPage() {
   const { groups, isLoading } = useAdminGroups();
+  const { createGroup } = useGroups(); // Add this to use the createGroup function
   const [_, setLocation] = useLocation();
   const { openModal } = useModal();
   const [newGroupName, setNewGroupName] = useState("");
@@ -30,10 +31,11 @@ export default function GroupManagementPage() {
   });
   
   const handleCreateGroup = () => {
-    // Implementation would connect to the API
-    console.log("Create group:", newGroupName);
-    setNewGroupName("");
-    setIsCreatingGroup(false);
+    if (newGroupName.trim()) {
+      createGroup(newGroupName);
+      setNewGroupName("");
+      setIsCreatingGroup(false);
+    }
   };
   
   const handleViewGroup = (groupId: number) => {
